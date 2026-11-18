@@ -1,4 +1,4 @@
-"""Index a disposable, isolated PST using the real Outlook Object Model. Never access real mail contents."""
+"""Index an isolated test PST using the real Outlook Object Model."""
 import contextlib
 import json
 import os
@@ -18,6 +18,7 @@ def main():
     cfg=settings()
     assert os.environ.get("MAILPILOT_HOME"), "Use an isolated test profile"
     home=Path(os.environ["MAILPILOT_HOME"]);home.mkdir(parents=True,exist_ok=True)
+    assert db_path(cfg).is_relative_to(home.resolve()) and not cfg["autoRefresh"], "Use a fixture-only index and disable auto refresh"
     pst=home/("test-"+uuid.uuid4().hex+".pst")
     app=dynamic.Dispatch("Outlook.Application");ns=app.GetNamespace("MAPI")
     ns.AddStoreEx(str(pst),3)
@@ -39,6 +40,7 @@ def main():
         deadline=time.monotonic()+10
         while folder.GetTable().GetRowCount()<3 and time.monotonic()<deadline:
             pythoncom.PumpWaitingMessages();time.sleep(.1)
+        time.sleep(2.1)
         with contextlib.closing(connect(db_path(cfg))) as db:
             run=lambda:sync(db,cfg,lambda *v:None,lambda:False,[store])
             first=run(); assert first["changed"]==3 and first["errors"]==0, first

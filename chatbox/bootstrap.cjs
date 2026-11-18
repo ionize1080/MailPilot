@@ -19,9 +19,10 @@ app.setAsDefaultProtocolClient = () => false
 function withMailServer(saved = {}) {
   const mcp = saved.mcp || {}
   const others = (mcp.servers || []).filter(server => server.id !== 'mailpilot')
+  const previous = (mcp.servers || []).find(server => server.id === 'mailpilot')
   return { language: 'zh-Hans', ...saved, autoUpdate: false,
     mcp: { ...mcp, enabledBuiltinServers: mcp.enabledBuiltinServers || [], servers: [...others, {
-      id: 'mailpilot', name: 'MailPilot', enabled: true,
+      id: 'mailpilot', name: 'MailPilot', enabled: previous?.enabled !== false,
       transport: { type: 'stdio', command: path.join(root, 'Runtime', 'python.exe'),
         args: ['-B', path.join(root, 'engine', 'service.py'), '--mcp'],
         env: { MAILPILOT_HOME: home, MAILPILOT_SOURCE: source, LOCALAPPDATA: process.env.LOCALAPPDATA,

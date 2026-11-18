@@ -44,8 +44,13 @@ def sync(db, cfg, progress, cancel, selected_stores=None):
                 table = folder.GetTable()
                 cols = table.Columns
                 cols.RemoveAll()
-                for col in ("EntryID","LastModificationTime","MessageClass"):
+                for col in ("EntryID","LastModificationTime","MessageClass","Size"):
                     cols.Add(col)
+                try:
+                    # PR_CHANGE_KEY detects even same-size edits within the same second.
+                    cols.Add("http://schemas.microsoft.com/mapi/proptag/0x65E20102")
+                except pythoncom.com_error:
+                    pass
                 db.execute("DELETE FROM seen")
                 db.commit()
                 while not table.EndOfTable:
@@ -57,10 +62,16 @@ def sync(db, cfg, progress, cancel, selected_stores=None):
                             raise RuntimeError("Outlook 未返回下一批邮件。")
                         break
                     batch, keys = [], []
-                    for entry, modified, kind in rows:
+                    for entry, modified, kind, size, *extra in rows:
                         if not str(kind).lower().startswith("ipm.note"):
                             continue
-                        entry, stamp = str(entry), utc(modified)
+                        entry, stamp = str(entry), utc(modified) + "/" + str(size)
+                        change = extra[0] if extra else None
+                        if isinstance(change, (bytes, bytearray, memoryview)) and len(change):
+                            stamp += "/" + bytes(change).hex()
+                        elif modified and abs(time.time() - modified.timestamp()) < 2:
+                            # Some stores expose only whole-second stamps. Recheck an unsettled row once.
+                            stamp += "/recent/" + str(time.time_ns())
                         keys.append((entry,))
                         checked += 1
                         old = db.execute("SELECT stamp,folder_id,folder FROM mail WHERE store=? AND entry=?", (sid,entry)).fetchone()

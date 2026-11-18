@@ -8,6 +8,8 @@ const root = path.resolve(__dirname, '..')
 const out = path.join(root, '.build')
 const home = process.env.MAILPILOT_HOME
 if (!home || !path.resolve(home).startsWith(out + path.sep)) throw Error('An isolated fixture profile is required')
+if (JSON.parse(fs.readFileSync(path.join(home,'settings.json'),'utf8')).autoRefresh !== false) throw Error('Disable automatic refresh for the fixture index')
+const bundle = process.env.MAILPILOT_QA_BUNDLE || path.join(root,'dist/MailPilot')
 const model = process.env.MAILPILOT_QA_MODEL || 'qwen3.7-plus'
 const host = process.env.MAILPILOT_QA_HOST || 'https://token-plan.cn-beijing.maas.aliyuncs.com/compatible-mode/v1'
 if (!['token-plan.cn-beijing.maas.aliyuncs.com','coding.dashscope.aliyuncs.com','coding-intl.dashscope.aliyuncs.com'].includes(new URL(host).hostname)) throw Error('Unexpected test endpoint')
@@ -56,7 +58,7 @@ app.whenReady().then(()=>{
     record.lastHTTP=d.statusCode;report()
   })
 })
-require(path.join(root,'dist/MailPilot/Chatbox/bootstrap.cjs'))
+require(path.join(bundle,'Chatbox/bootstrap.cjs'))
 const delay=ms=>new Promise(r=>setTimeout(r,ms))
 async function until(fn,n,label){
   for(let i=0;i<n;i++){const value=await fn();if(value)return value;await delay(500)}
@@ -64,6 +66,27 @@ async function until(fn,n,label){
 }
 ;(async()=>{
   let win = await until(()=>BrowserWindow.getAllWindows()[0],100,'window')
+  const network=win.webContents.debugger
+  network.attach('1.3')
+  await network.sendCommand('Network.enable')
+  const responses=new Set()
+  network.on('message',async (_event,method,params)=>{
+    if(method==='Network.responseReceived' && params.response.url.startsWith(host+'/')) responses.add(params.requestId)
+    if(method!=='Network.loadingFinished' || !responses.delete(params.requestId))return
+    try {
+      const res=await network.sendCommand('Network.getResponseBody',{requestId:params.requestId})
+      const data=res.base64Encoded ? Buffer.from(res.body,'base64').toString() : res.body
+      let answer=''
+      for(const line of data.split(/\r?\n/)) {
+        if(!line.startsWith('data:'))continue
+        const value=line.slice(5).trim()
+        if(!value || value==='[DONE]')continue
+        const packet=JSON.parse(value)
+        answer+=packet.choices?.[0]?.delta?.content || ''
+      }
+      if(answer.includes('JADE-8317')) {record.modelReplyVerified=true;report()}
+    } catch { /* Requests without a retained response body cannot establish a match. */ }
+  })
   const js = s=>win.webContents.executeJavaScript(s,true)
   await until(async()=>!win.webContents.isLoading() && await js("!!document.querySelector('#message-input, [data-testid=message-input]')"),150,'Chatbox input')
   record.ready=true;report()
@@ -71,12 +94,12 @@ async function until(fn,n,label){
   await js("document.querySelector('#message-input, [data-testid=message-input]').focus()")
   await win.webContents.insertText('这是合成邮件的集成测试。请实际调用 MailPilot 的 search_mail 工具，mode 选 attachment，用正则 Aurora-QA-[0-9]+ 搜索附件名。再用 read_mail 读取命中邮件，回复正文中 Proof code 后的验证代码。不要猜测。')
   await until(()=>js("document.querySelector('#message-input').value.includes('Aurora-QA')"),15,'input value')
-  await delay(650)
   win.webContents.sendInputEvent({type:'keyDown',keyCode:'Enter'})
   win.webContents.sendInputEvent({type:'keyUp',keyCode:'Enter'})
-  await until(async()=>record.tools.includes('search_mail') && record.tools.includes('read_mail') &&
+  await until(async()=>record.modelReplyVerified && record.tools.includes('search_mail') && record.tools.includes('read_mail') &&
     await js("document.body.innerText.includes('JADE-8317')"),360,'model answer and both real MCP calls')
-  if(!record.requests.some(r=>r.bearerMatches && r.contentType?.includes('application/json')))throw Error('Provider headers differ')
+  if(!record.requests.some(r=>r.bearerMatches && r.contentType?.includes('application/json') &&
+    r.userAgent?.includes('Chatbox/1.20.3') && !r.chatboxProxyHeader))throw Error('Provider headers differ')
   record.answerVerified=true;report();app.exit(0)
 })().catch(async e=>{
   record.error=String(e.message).replaceAll(key,'[redacted]')

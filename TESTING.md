@@ -2,9 +2,9 @@
 
 ## 测试环境与范围
 
-Windows 11 build 26300，经典 Outlook 16.0.20527.20194 x64。功能区在本机 Outlook 中实际连接并执行 onLoad。部署测试在 x86 和 x64 Windows PowerShell 中分别创建了 COM 对象，验证了带中文及空格的解压路径、旧目录停用保护、用户级启用与停用，以及卸载列表检查。
+Windows 11 build 26300，经典 Outlook 16.0.20527.20194 x64。功能区在本机 Outlook 中实际连接、执行 onLoad，并通过回调打开设置窗口。桌面查找窗口实测输入附件名正则后显示唯一命中，改为无匹配表达式后清空结果。设置窗口实测保存自定义索引目录，重新打开后恢复配置，搜索引擎也在选定目录创建了数据库。部署测试在 x86 和 x64 Windows PowerShell 中分别创建了 COM 对象，验证了带中文及空格的解压路径、旧目录停用保护、用户级启用与停用，以及卸载列表检查。
 
-目标组合为 Windows 10 21H1 x64 / Outlook 2010 x86 或 x64。本次没有该组合的实机验收。新版 Outlook 提供 Office Web 清单、本机启动入口和 Graph Mail.Read 数据源。已对模拟 Graph 响应验证文件夹枚举、消息 delta、附件分页、移除和令牌过期恢复。真实租户登录和新版 Outlook 客户端内侧载仍待验证。
+目标组合为 Windows 10 21H1 x64 / Outlook 2010 x86 或 x64。本次没有该组合的实机验收。新版 Outlook 的 Office Web 清单已通过 Microsoft 清单验证服务，HTTPS 任务窗格已部署。已对模拟 Graph 响应验证文件夹枚举、消息 delta、附件分页、移除和令牌过期恢复。真实租户登录和新版 Outlook 客户端内侧载仍待验证。
 
 ## 50,000 封合成邮件
 
@@ -30,4 +30,4 @@ Windows 11 build 26300，经典 Outlook 16.0.20527.20194 x64。功能区在本�
 
 ## 复核
 
-运行 tests/regression.py 和 tests/bench.py 时使用发行包中的 Runtime/python.exe。bench.py 接受一个尚不存在的数据库文件名。tests/outlook.pytest.py 使用环境变量 MAILPILOT_HOME 指定的独立测试目录。完成该 PST 测试并在测试目录的 settings.json 中关闭 autoRefresh 后，执行 tests/run-live.ps1 -KeyFile 个人密钥文件。真实测试使用该合成索引和独立 Chatbox 配置。
+运行 tests/regression.py 和 tests/bench.py 时使用发行包中的 Runtime/python.exe。bench.py 接受一个尚不存在的数据库文件名。将 MAILPILOT_HOME 设为源码目录下的 .build/qa-mailbox，在该目录的 settings.json 中设置 {"autoRefresh":false}，再运行 tests/outlook_live.py 建立合成测试索引。执行 tests/run-live.ps1 -KeyFile 个人密钥文件可通过独立 Chatbox 配置重复真实测试。可用 -Bundle 指向解压后的发行包。

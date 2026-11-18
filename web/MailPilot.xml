@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="MailApp">
- <Id>fba848b5-d27e-4e60-8ce7-a5f587df65bb</Id><Version>0.1.0.0</Version>
+ <Id>fba848b5-d27e-4e60-8ce7-a5f587df65bb</Id><Version>1.0.0.0</Version>
  <ProviderName>MailPilot</ProviderName><DefaultLocale>zh-CN</DefaultLocale>
  <DisplayName DefaultValue="MailPilot"/><Description DefaultValue="打开本机的正则邮件查找与 AI 助手。"/>
  <IconUrl DefaultValue="https://ionize1080.github.io/MailPilot/icon-32.png"/>
@@ -27,4 +27,22 @@
  <bt:Urls><bt:Url id="Pane" DefaultValue="https://ionize1080.github.io/MailPilot/"/></bt:Urls>
  <bt:ShortStrings><bt:String id="Label" DefaultValue="MailPilot"/></bt:ShortStrings>
  <bt:LongStrings><bt:String id="Tip" DefaultValue="使用本机索引查找邮件，或打开只读 AI 助手。"/></bt:LongStrings></Resources>
+ <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+ <Requirements><bt:Sets DefaultMinVersion="1.3"><bt:Set Name="Mailbox"/></bt:Sets></Requirements>
+ <Hosts><Host xsi:type="MailHost"><DesktopFormFactor>
+ <ExtensionPoint xsi:type="MessageReadCommandSurface"><OfficeTab id="TabDefault"><Group id="MailPilot.Read">
+ <Label resid="Label"/><Control xsi:type="Button" id="MailPilot.Open"><Label resid="Label"/>
+ <Supertip><Title resid="Label"/><Description resid="Tip"/></Supertip><Icon>
+ <bt:Image size="16" resid="I16"/><bt:Image size="32" resid="I32"/><bt:Image size="80" resid="I80"/>
+ </Icon><Action xsi:type="ShowTaskpane"><SourceLocation resid="Pane"/></Action></Control>
+ </Group></OfficeTab></ExtensionPoint></DesktopFormFactor></Host></Hosts>
+ <Resources><bt:Images><bt:Image id="I16" DefaultValue="https://ionize1080.github.io/MailPilot/icon-16.png"/>
+ <bt:Image id="I32" DefaultValue="https://ionize1080.github.io/MailPilot/icon-32.png"/>
+ <bt:Image id="I80" DefaultValue="https://ionize1080.github.io/MailPilot/icon-80.png"/></bt:Images>
+ <bt:Urls><bt:Url id="Pane" DefaultValue="https://ionize1080.github.io/MailPilot/"/></bt:Urls>
+ <bt:ShortStrings><bt:String id="Label" DefaultValue="MailPilot"/></bt:ShortStrings>
+ <bt:LongStrings><bt:String id="Tip" DefaultValue="使用本机索引查找邮件，或打开只读 AI 助手。"/></bt:LongStrings></Resources>
+
+ <EquivalentAddins><EquivalentAddin><ProgId>MailPilot.Outlook</ProgId><Type>COM</Type></EquivalentAddin></EquivalentAddins>
+ </VersionOverrides>
  </VersionOverrides></OfficeApp>

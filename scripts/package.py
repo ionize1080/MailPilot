@@ -13,9 +13,11 @@ def dependencies():
     licenses=OUT/"licenses/npm"
     licenses.mkdir(parents=True,exist_ok=True)
     packages={}
+    visited=set()
     def walk(modules):
-        if not modules.is_dir():
+        if not modules.is_dir() or modules.resolve() in visited:
             return
+        visited.add(modules.resolve())
         for entry in modules.iterdir():
             if entry.name.startswith("."):
                 continue
