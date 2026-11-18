@@ -1,0 +1,13 @@
+{
+  "name": "xyz.chatboxapp.ce",
+  "productName": "Chatbox",
+  "version": "1.20.3",
+  "private": true,
+  "main": "bootstrap.cjs",
+  "dependencies": {
+    "@anthropic-ai/sandbox-runtime": "0.0.34",
+    "@libsql/client": "0.15.15",
+    "gray-matter": "4.0.3"
+  },
+  "overrides": { "libsql": "0.5.22" }
+}
