@@ -8,7 +8,7 @@ from email.parser import BytesParser
 from pathlib import Path
 import tempfile
 import pythoncom
-from message import person, values
+from message import person, repair_surrogates, values
 
 def utc(dt):
     if dt is None:
@@ -157,7 +157,7 @@ def sync(db, cfg, progress, cancel, selected_stores=None):
                 return
             visited_folders.add((sid, fid))
             if folder.DefaultItemType == 0:
-                path = str(folder.FolderPath)
+                path = repair_surrogates(str(folder.FolderPath))
                 table = folder.GetTable()
                 cols = table.Columns
                 cols.RemoveAll()

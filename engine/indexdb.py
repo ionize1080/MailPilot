@@ -6,7 +6,7 @@ import zlib
 from pathlib import Path
 
 import re
-from message import BodyText, message_fields
+from message import BodyText, message_fields, repair_surrogates
 
 # ASCII simple case equivalents also include the four non-ASCII letters below.
 FOLD = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZİıſK\x00", "abcdefghijklmnopqrstuvwxyziisk ")
@@ -81,6 +81,8 @@ def mail_key(store, entry):
     return hashlib.sha256((store+"\0"+entry).encode("utf-8")).hexdigest()[:32]
 
 def save(db, item):
+    # The stored snapshot and both full-text indexes must use the same repaired text.
+    item = repair_surrogates(item)
     meta = dict(item.get("metadata", {}))
     html, images = item.get("html"), item.get("inlineImages")
     if html:
@@ -119,6 +121,7 @@ def save_envelope(db, row, fields):
 
 
 def rename_folder(db, store, fid, path):
+    path = repair_surrogates(path)
     for r in db.execute("SELECT * FROM mail WHERE store=? AND folder_id=? AND folder<>?", (store, fid, path)):
         fields = message_fields(r["subject"], r["sender"], r["received"], path, json.loads(r["attachments"]), json.loads(r["metadata"]))
         save_envelope(db, r["id"], fields)

@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from runtime import ROOT,OUT
 
-VERSION="0.2.0"
+VERSION="0.2.1"
 
 def stage_desktop():
     src, dest = ROOT/"desktop", OUT/"Desktop"

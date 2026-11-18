@@ -11,7 +11,7 @@ using Extensibility;
 using Office = Microsoft.Office.Core;
 
 [assembly: AssemblyVersion("0.1.0.0")]
-[assembly: AssemblyFileVersion("0.2.0.0")]
+[assembly: AssemblyFileVersion("0.2.1.0")]
 [assembly: ComVisible(false)]
 namespace MailPilot {
     [ComVisible(true), Guid("E6946569-C68F-49E1-BEFC-727F546F20B9"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
@@ -23,6 +23,7 @@ namespace MailPilot {
         [DispId(5)] bool RibbonReady { get; }
         [DispId(6)] bool SetPanel(string action,string tool,string handle,string side,int width);
         [DispId(7)] object RibbonImage(Office.IRibbonControl control);
+        [DispId(8)] string LoadedPath { get; }
     }
 
     [ComVisible(true), Guid("85C590EA-8141-4C33-99A0-F304FFA27D7E"), ProgId("MailPilot.Outlook"),
@@ -32,14 +33,27 @@ namespace MailPilot {
         Office.IRibbonUI ribbon;
         dynamic outlook;
         Control dispatcher;
+        bool connected;
         readonly Dictionary<string,Office.CustomTaskPane> panes=new Dictionary<string,Office.CustomTaskPane>();
         readonly Dictionary<string,object> images=new Dictionary<string,object>();
         public bool RibbonReady { get; private set; }
+        public string LoadedPath { get { return typeof(Connect).Assembly.Location; } }
         public void OnConnection(object app, ext_ConnectMode mode, object addin, ref Array custom) {
-            outlook=app; dispatcher=new Control();dispatcher.CreateControl();
-            addin.GetType().InvokeMember("Object",BindingFlags.SetProperty,null,addin,new object[]{this});
+            try {
+                outlook=app; dispatcher=new Control();dispatcher.CreateControl();
+                ((Office.COMAddIn)addin).Object=this;
+                connected=true;
+                OutlookLoad.Record(LoadedPath,RibbonReady ? "ribbon" : "connected");
+            } catch (Exception error) {
+                OutlookLoad.Record(LoadedPath,"failed",error);
+                if (dispatcher != null) dispatcher.Dispose();
+                dispatcher=null;outlook=null;
+                throw;
+            }
         }
         public void OnDisconnection(ext_DisconnectMode mode, ref Array custom) {
+            connected=false;
+            OutlookLoad.Record(LoadedPath,"disconnected");
             RibbonReady=false;foreach(var pane in panes.Values){try{((DockHost)pane.ContentControl).HostClosed();pane.Delete();}catch(COMException){}}
             panes.Clear();factory=null;ribbon=null;outlook=null;if(dispatcher!=null)dispatcher.Dispose();
         }
@@ -102,7 +116,10 @@ namespace MailPilot {
               <button id=""MailPilotSettings"" label=""设置"" size=""large"" getImage=""RibbonImage"" onAction=""Settings""/>
               </group></tab></tabs></ribbon></customUI>";
         }
-        public void Loaded(Office.IRibbonUI ui) { ribbon=ui;RibbonReady=true; }
+        public void Loaded(Office.IRibbonUI ui) {
+            ribbon=ui;RibbonReady=true;
+            if(connected) OutlookLoad.Record(LoadedPath,"ribbon");
+        }
         static void Launch(string action) {
             var root=Path.GetDirectoryName(typeof(Connect).Assembly.Location);
             Process.Start(new ProcessStartInfo(Path.Combine(root,"MailPilot.exe"),action) {WorkingDirectory=root,UseShellExecute=false});

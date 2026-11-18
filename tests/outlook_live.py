@@ -29,7 +29,8 @@ def main():
         root=store.GetRootFolder(); folder=root.Folders.Add("MailPilot QA",6)
         explorer=folder.GetExplorer(0);explorer.Display()
         file=home/"Aurora-QA-741.pdf";file.write_bytes(b"MailPilot synthetic filename fixture")
-        for title,body,attached in [("Pilot-INV-7701","ordinary",False),("Control","MORNING-9825",False),
+        unicode_body = "x" * 217 + "\udd00Unicode-tail 📨"
+        for title,body,attached in [("Pilot-INV-7701",unicode_body,False),("Control","MORNING-9825",False),
                                      ("Attachment receipt","Proof code: JADE-8317",True)]:
             item=folder.Items.Add("IPM.Note");item.Subject=title
             if title=="Control":
@@ -57,6 +58,11 @@ def main():
                 r=search(db,dict(pattern=pattern,mode=mode),cfg);assert len(r["items"])==want,(pattern,r)
             second=run();assert second["changed"]==0,second
             from service import read_mail, dispatch
+            unicode_hit = search(db,dict(pattern="Unicode-tail 📨",mode="subject_body"),cfg)["items"]
+            assert len(unicode_hit)==1 and unicode_hit[0]["field"]=="body"
+            indexed_body = read_mail(db,dict(id=unicode_hit[0]["id"]))["body"]
+            source_body = folder.Items.Find("[Subject] = 'Pilot-INV-7701'").Body
+            assert indexed_body == source_body.replace("\udd00", "\ufffd")
             rtf_id=search(db,dict(pattern="MORNING-9825",mode="all"),cfg)["items"][0]["id"]
             rendered=dispatch("detail",dict(id=rtf_id,pattern="MORNING",mode="full"),cfg,None)
             assert rendered["html"] and "MORNING" in rendered["html"], "RTF detail is missing"

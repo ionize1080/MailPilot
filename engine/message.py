@@ -3,6 +3,23 @@ from html.parser import HTMLParser
 import re
 
 
+_SURROGATE = re.compile(r"[\ud800-\udfff]")
+
+
+def repair_surrogates(value):
+    """Make mailbox text UTF-8 encodable, including nested properties and their names."""
+    if isinstance(value, str):
+        if value.isascii() or not _SURROGATE.search(value):
+            return value
+        # Outlook can supply raw UTF-16 code units. Keep pairs and replace each orphan with U+FFFD.
+        return value.encode("utf-16-le", "surrogatepass").decode("utf-16-le", "replace")
+    if isinstance(value, dict):
+        return {repair_surrogates(k): repair_surrogates(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [repair_surrogates(v) for v in value]
+    return value
+
+
 def person(name="", address=""):
     name, address = (str(v or "").strip() for v in (name, address))
     return f"{name} <{address}>" if name and address and name.casefold() != address.casefold() else name or address

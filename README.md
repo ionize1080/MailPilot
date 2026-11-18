@@ -5,7 +5,7 @@ MailPilot 为 Windows 上的 Outlook 提供本地正则邮件查找和基于 Cha
 ## 开始使用
 
 1. 从 [GitHub Releases](https://github.com/ionize1080/MailPilot/releases/latest) 下载 Windows ZIP，解压整个 MailPilot 文件夹到固定位置。
-2. 关闭经典 Outlook，双击 MailPilot.exe，点“启用此目录”，再启动 Outlook。在功能区的 **MailPilot** 选项卡打开“正则查找”。也可运行 Enable.cmd。
+2. 关闭经典 Outlook，双击 MailPilot.exe，按默认的“当前用户”点“启用此目录”，再启动 Outlook。在功能区的 **MailPilot** 选项卡打开“正则查找”。使用整机部署的电脑请按下方“Outlook 2010 与整台电脑部署”操作。
 3. 首次打开查找会索引默认邮箱。可一边建索引一边查找，窗口底部显示已索引封数。在“设置 → 邮箱与索引”中可切换到所有已挂载邮箱与 PST。
 4. 输入正则，例如用“标题”查 `PO-\d{6}`，用“发件人”查 `@example\.org`，用“附件名”查 `季度.*\.xlsx$`。单击结果打开独立阅读窗，可逐处查看命中，再点“在 Outlook 中打开”进入原件。
 5. 打开“AI 助手”，在 Chatbox 设置中选择支持工具调用的模型并填写自己的 API 密钥。例如可以问“用附件名正则查找 Aurora 开头的 PDF，再读取命中邮件的正文”。服务还提供索引状态、文件夹计数和分段读取。
@@ -40,7 +40,17 @@ MailPilot 为 Windows 上的 Outlook 提供本地正则邮件查找和基于 Cha
 
 默认设置及索引位于 `%LOCALAPPDATA%\MailPilot`。Chatbox 设置和对话默认存放于其 Chatbox 子目录。升级时保留原设置、邮件 ID 和旧索引内容，下一次刷新补齐信头和富文本。手动关闭自动刷新时可点“刷新索引”。经典 Outlook 中已移动或移除的邮件在成功刷新后对账。遇到单封读取失败会显示数量，保留上次可读记录。
 
-启用只写当前用户的 Outlook 加载项、COM 类及 MailPilot URL 注册信息。部署器采用与 PagePilot 类似的解压、启用、停用方式，系统软件卸载列表不会新增条目。移动目录之前运行 Disable.cmd，在新目录重新启用。更新时也可以直接启用新版本，旧版本的停用命令会核对归属。需要彻底移除时，先停用并关闭 MailPilot，再按需删除解压目录、索引和个人设置。
+部署器在选定范围注册 MailPilot 的 Outlook 加载项、两个专属 COM 类和 mailpilot 链接。更新时可将新版解压到新目录，再启用该目录。移动或移除程序前，请在原目录选择原部署范围，点“停用此目录”。Enable.cmd 和 Disable.cmd 使用当前用户范围。个人设置和索引存放在独立的数据目录。
+
+### Outlook 2010 与整台电脑部署
+
+如果 PagePilot 在这台电脑上使用“整台电脑（管理员环境）”，MailPilot 可使用相同的部署范围。以下操作都能在图形界面完成。
+
+1. 退出 Outlook。将完整 ZIP 解压到固定的、由管理员维护的本地目录，例如 `C:\Program Files\MailPilot`。其他账户的 Outlook 也会从这里加载程序。
+2. 右键新目录里的 **MailPilot.exe → 以管理员身份运行**。选择 **整台电脑（需管理员权限）**，点 **启用此目录**。成功后，管理器会移除运行部署器的账户中可能遮蔽整机版本的旧 MailPilot 注册。若使用了另一个管理员账户，请先用原账户在原目录停用旧的当前用户版本。
+3. 按平时的方式启动 Outlook，打开收件箱。在 MailPilot.exe 中点 **检查实际加载**。看到 **已连接此目录，功能区已加载（已验证）**，即可使用 MailPilot 选项卡。
+
+“启动设置 LoadBehavior=3”表示已配置随 Outlook 启动。COM 加载项窗口显示的 mscoree.dll 是 .NET 加载入口。若仍显示“未加载”，请保持 Outlook 开着，点“复制检查结果”取得 Outlook 版本、位数、两个范围的注册信息和最近一次可用的连接错误。连接和功能区回执按 Windows 会话保存在当前用户的本地 MailPilot 数据中。
 
 ## 两种 Outlook
 

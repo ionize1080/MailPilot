@@ -1,4 +1,5 @@
 import contextlib
+import json
 import random
 import sqlite3
 import tempfile
@@ -6,7 +7,7 @@ import urllib.error
 from pathlib import Path
 from config import DEFAULTS
 from graph import API, sync_pages
-from indexdb import SCHEMA,connect,save,pack_body,terms,state
+from indexdb import SCHEMA,connect,save,pack_body,unpack_body,terms,state
 from search import MODES,search,query,highlights
 
 def row(i, text):
@@ -71,6 +72,39 @@ def envelope():
         assert not search(db,dict(pattern="Archive-only",mode="full"),DEFAULTS)["items"]
         print("PASS sender/delegate/full scope, metadata FTS updates, UTF-16 and zero-width highlighting")
 
+def surrogate_mail():
+    subject = "预算\ud83d\udce8📅"
+    body = "x" * 217 + "\udd00BodyTail" + "正文" * 50
+    attachment = "File\udfffName.xlsx"
+    html = '<a href="https://example.org/\ud800link">link</a><img src="cid:pic\udd00" alt="Alt\udd00Text">'
+    record = row(2, subject) | {
+        "body": body, "sender": "Sender\ud800Name", "folder": "/Folder\udd00Name", "html": html,
+        "attachments": [attachment], "inlineImages": {"pic\udd00": "data:image/png;base64,AA=="},
+        "metadata": {"custom:\ud800field": ["Value\ud800End"], "headers": ["Trace\udd00End"],
+                     "files": [{"name": attachment, "size": 123, "cid": "pic\udd00"}]},
+    }
+    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(connect(Path(tmp)/"unicode.db")) as db:
+        with db:
+            save(db, row(1, "Before"))
+            rid = save(db, record)
+            save(db, row(3, "After"))
+        assert db.execute("SELECT count(*) FROM mail").fetchone()[0] == 3
+        stored = db.execute("SELECT * FROM mail WHERE id=?", (rid,)).fetchone()
+        assert stored["subject"] == "预算📨📅"
+        assert unpack_body(stored["body"]) == body.replace("\udd00", "\ufffd")
+        assert unpack_body(stored["html"]) == html.replace("\ud800", "\ufffd").replace("\udd00", "\ufffd")
+        assert json.loads(unpack_body(stored["inline_images"])) == {"pic\ufffd": "data:image/png;base64,AA=="}
+        metadata = json.loads(stored["metadata"])
+        assert metadata["files"] == [{"name": "File\ufffdName.xlsx", "size": 123, "cid": "pic\ufffd"}]
+        for pattern, field in (("预算📨📅", "subject"), ("\ufffdBodyTail", "body"), ("File\ufffdName", "attachment"),
+                               ("Sender\ufffdName", "sender"), ("Folder\ufffdName", "folder"), ("Trace\ufffdEnd", "headers"),
+                               ("Value\ufffdEnd", "custom:\ufffdfield"), ("Alt\ufffdText", "imageAlt"), ("/\ufffdlink", "links")):
+            args = dict(pattern=pattern, mode="full")
+            indexed = search(db, args, DEFAULTS)
+            assert indexed["items"] == search(db, args, DEFAULTS, force_scan=True)["items"]
+            assert [(hit["id"], hit["field"]) for hit in indexed["items"]] == [(rid, field)], pattern
+        print("PASS isolated surrogates, valid emoji, nested properties and same-batch mail search")
+
 def upgrade():
     with tempfile.TemporaryDirectory() as tmp:
         path=Path(tmp)/"v1.db"
@@ -94,9 +128,10 @@ def graph_rounds():
     cfg=DEFAULTS|{"pauseMs":0}
     with tempfile.TemporaryDirectory() as tmp, contextlib.closing(connect(Path(tmp)/"m.db")) as db:
         deleted=False;expired=False;pages=[]
+        folder_name="Inbox"
         def fetch(url):
             pages.append(url)
-            if url==f:return {"value":[dict(id="F",displayName="Inbox",childFolderCount=0)]}
+            if url==f:return {"value":[dict(id="F",displayName=folder_name,childFolderCount=0)]}
             if url==delta:return {"value":[{"id":"A"}] if not expired else [],"@odata.nextLink":API+"/page2"}
             if url==API+"/page2":return {"value":[],"@odata.deltaLink":token}
             if url in (token,next_token):
@@ -115,7 +150,10 @@ def graph_rounds():
         for pattern in ("cc@example","Graph trace","fixture","机密","32121"):
             assert search(db,dict(pattern=pattern,mode="full"),DEFAULTS)["items"]
         assert all(db.execute("SELECT html,inline_images FROM mail").fetchone())
+        folder_name="Renamed\udd00Folder"
         assert run()["changed"]==0 and pages.count(delta)==1
+        renamed=search(db,dict(pattern="Renamed\ufffdFolder",mode="full"),DEFAULTS)["items"]
+        assert len(renamed)==1 and renamed[0]["field"]=="folder"
         deleted=True
         assert run()["removed"]==1
         with db:save(db,row(3,"old")|{"store":"fixture","folder_id":"F"})
@@ -123,4 +161,4 @@ def graph_rounds():
         assert run()["removed"]==1 and db.execute("SELECT count(*) FROM mail").fetchone()[0]==0
         print("PASS Graph folder, delta, attachment pagination, removal and expired-token recovery")
 if __name__=="__main__":
-    run();envelope();upgrade();graph_rounds()
+    run();envelope();surrogate_mail();upgrade();graph_rounds()
