@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; frame-src 'self' about:"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MailPilot · 邮件详情</title>
+    <link rel="stylesheet" href="ui.css" />
+    <script defer src="node_modules/dompurify/dist/purify.min.js"></script>
+    <script defer src="common.js"></script>
+    <script defer src="rich-body.js"></script>
+    <script defer src="reader.js"></script>
+  </head>
+  <body class="reader-page">
+    <header id="titlebar"></header>
+    <div id="reader-tools">
+      <span id="location"></span>
+      <div id="reader-actions"></div>
+    </div>
+    <main id="reader-scroll">
+      <div id="notice" role="status" hidden></div>
+      <article id="letter" aria-label="邮件详情"></article>
+    </main>
+    <footer class="matchbar">
+      <span class="match-query" id="expression"></span><span id="match-count" role="status"></span>
+      <div id="match-actions"></div>
+    </footer>
+  </body>
+</html>

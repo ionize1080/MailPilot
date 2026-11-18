@@ -1,12 +1,13 @@
 import contextlib
 import random
+import sqlite3
 import tempfile
 import urllib.error
 from pathlib import Path
 from config import DEFAULTS
 from graph import API, sync_pages
-from indexdb import connect,save
-from search import search
+from indexdb import SCHEMA,connect,save,pack_body,terms,state
+from search import MODES,search,query,highlights
 
 def row(i, text):
     return dict(store="s",entry=str(i),folder="/in",folder_id="in",stamp="1",subject=text,
@@ -27,7 +28,7 @@ def run():
               r"(?P<n>a)(?P=n)",r"(?:alpha|beta)?-?[0-9]",r"RAVEN-\D+?",r"(a|b)+a",r"ab\{2\}"]
         comparisons=0
         for p in pats:
-            for mode in ("all","subject","subject_body","attachment"):
+            for mode in MODES:
                 for cs in (False,True):
                     args=dict(pattern=p,mode=mode,caseSensitive=cs,limit=1000)
                     a=search(db,args,DEFAULTS); b=search(db,args,DEFAULTS,force_scan=True)
@@ -44,6 +45,48 @@ def run():
         assert search(db,dict(pattern=".",mode="subject"),DEFAULTS,lambda:True)["partial"]
         print(f"PASS {comparisons} indexed/scan result comparisons, update, deletion reconciliation, pagination and cancellation")
 
+def envelope():
+    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(connect(Path(tmp)/"fields.db")) as db:
+        original = row(1,"采购")
+        record = original | {"metadata":{"sender":["林 <lin@example.org>"],"onBehalf":["助理 <delegate@example.org>"],
+            "to":["Project list"],"cc":["质量-Review"],"bcc":["Archive-only"],"sent":["2026-11-01"],
+            "headers":["X-Trace: 📨INTERNET-QA"],"custom:采购单":["AF-7701"],"categories":["Astral 🔖"],
+            "files":[{"name":original["attachments"][0],"type":"test/mimeonly","size":125}]}}
+        with db: save(db,record)
+        for pattern, field in (("@example","sender"),(r"^lin@example\.org$","sender"),("delegate@","onBehalf"),("Project list","to"),("质量","cc"),
+                               ("Archive-only","bcc"),("INTERNET-QA","headers"),("AF-7701","custom:采购单"),
+                               ("Astral","categories"),("mimeonly","attachmentType"),("2026-11","sent")):
+            for mode in MODES:
+                args=dict(pattern=pattern,mode=mode)
+                a=search(db,args,DEFAULTS);b=search(db,args,DEFAULTS,force_scan=True)
+                assert a["items"]==b["items"]
+                if mode=="full" or mode=="sender" and field in ("sender","onBehalf"):
+                    assert a["items"][0]["field"]==field
+                else:
+                    assert not a["items"],(mode,pattern)
+        params=query(dict(mode="full",pattern=r"(?<=📨)A|(?=B)"),DEFAULTS)
+        hit=highlights(*params,{"headers":["📨AB"]},DEFAULTS)
+        assert hit["marks"]["headers"]==[[(2,3),(3,3)]]
+        with db: save(db,original)
+        assert not search(db,dict(pattern="Archive-only",mode="full"),DEFAULTS)["items"]
+        print("PASS sender/delegate/full scope, metadata FTS updates, UTF-16 and zero-width highlighting")
+
+def upgrade():
+    with tempfile.TemporaryDirectory() as tmp:
+        path=Path(tmp)/"v1.db"
+        with contextlib.closing(sqlite3.connect(path)) as old:
+            old.executescript(SCHEMA+"PRAGMA user_version=1;")
+            old.execute("INSERT INTO mail VALUES(1,'S','E','F','Legacy Inbox','V','Old Subject','Old Sender','2010',?,'[]','')",(pack_body("old body"),))
+            old.execute("INSERT INTO grams(rowid,subject,body,attachment) VALUES(1,?,?,'')",(terms("Old Subject"),terms("old body")))
+            old.execute("INSERT INTO state VALUES('lastSync','99'),('delta/F','\"old cursor\"')")
+            old.commit()
+        with contextlib.closing(connect(path)) as db:
+            assert not state(db,"delta/F") and not state(db,"lastSync")
+            for pattern,mode in [("Old Subject","subject"),("Old Sender","sender"),("Legacy Inbox","full"),("old body","full")]:
+                assert search(db,dict(pattern=pattern,mode=mode),DEFAULTS)["items"][0]["id"]==1
+            assert db.execute("SELECT stamp FROM mail").fetchone()[0]==""
+        print("PASS v1 upgrade retains IDs/content and schedules envelope and HTML backfill")
+
 def graph_rounds():
     f=API+"/me/mailFolders?$select=id,displayName,childFolderCount"
     delta=API+"/me/mailFolders/F/messages/delta?$select=id,changeKey"
@@ -59,13 +102,19 @@ def graph_rounds():
             if url in (token,next_token):
                 if expired:raise urllib.error.HTTPError(url,410,"Gone",{},None)
                 return {"value":[{"id":"A","@removed":{}}] if deleted else [],"@odata.deltaLink":next_token}
-            if "/me/messages/A?" in url:return dict(id="A",subject="Graph message",changeKey="01",body={"content":"fixture"},
-                attachments=[{"name":"Page1.xlsx"}],parentFolderId="F",**{"attachments@odata.nextLink":API+"/attach2"})
-            if url==API+"/attach2":return {"value":[{"name":"Second.csv"}]}
+            if "/me/messages/A?" in url:return dict(id="A",subject="Graph message",changeKey="01",body={"contentType":"html","content":"<p>fi<b>xt</b>ure</p>"},
+                ccRecipients=[{"emailAddress":{"name":"Archive","address":"cc@example.org"}}],internetMessageHeaders=[{"name":"X-Test","value":"Graph trace"}],
+                singleValueExtendedProperties=[{"id":"Integer 0x0036","value":"3"},{"id":"Integer 0x0e08","value":"32121"}],parentFolderId="F")
+            if "/me/messages/A/attachments?" in url:return {"value":[{"name":"Page1.xlsx"}],"@odata.nextLink":API+"/attach2"}
+            if url==API+"/attach2":return {"value":[{"name":"Second.csv"},{"id":"I","name":"image.png","isInline":True,"contentType":"image/png"}]}
+            if url==API+"/me/messages/A/attachments/I":return {"contentId":"signature", "contentBytes":"AA=="}
             raise AssertionError(url)
         def run():return sync_pages(db,cfg,lambda *args:None,fetch,"fixture")
         assert run()["changed"]==1
         assert search(db,dict(pattern=r"Second\.csv",mode="attachment"),DEFAULTS)["items"]
+        for pattern in ("cc@example","Graph trace","fixture","机密","32121"):
+            assert search(db,dict(pattern=pattern,mode="full"),DEFAULTS)["items"]
+        assert all(db.execute("SELECT html,inline_images FROM mail").fetchone())
         assert run()["changed"]==0 and pages.count(delta)==1
         deleted=True
         assert run()["removed"]==1
@@ -74,4 +123,4 @@ def graph_rounds():
         assert run()["removed"]==1 and db.execute("SELECT count(*) FROM mail").fetchone()[0]==0
         print("PASS Graph folder, delta, attachment pagination, removal and expired-token recovery")
 if __name__=="__main__":
-    run();graph_rounds()
+    run();envelope();upgrade();graph_rounds()

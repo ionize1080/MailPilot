@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MailPilot · 设置</title>
+    <link rel="stylesheet" href="ui.css" />
+    <script defer src="common.js"></script>
+    <script defer src="settings.js"></script>
+  </head>
+  <body class="settings-page">
+    <header id="titlebar"></header>
+    <div class="app-body">
+      <aside class="settings-nav">
+        <img data-art="settings" alt="" />
+        <h1>设置</h1>
+        <nav id="sections" aria-label="设置分类"></nav>
+      </aside>
+      <div class="settings-work">
+        <main id="settings-scroll"><div id="settings-content"></div></main>
+        <footer class="savebar">
+          <span id="notice" aria-live="polite"></span><button id="cancel" class="btn">取消</button
+          ><button id="save" class="primary">保存设置</button>
+        </footer>
+      </div>
+    </div>
+  </body>
+</html>

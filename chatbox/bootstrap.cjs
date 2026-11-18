@@ -1,5 +1,6 @@
 'use strict'
-const { app, ipcMain } = require('electron')
+const { app, ipcMain, nativeTheme } = require('electron')
+const { spawn } = require('node:child_process')
 const path = require('node:path')
 const fs = require('node:fs')
 
@@ -13,6 +14,40 @@ app.setName('Chatbox')
 Object.defineProperty(app, 'isPackaged', { get: () => true })
 Object.defineProperty(process, 'resourcesPath', { value: path.join(__dirname, 'resources') })
 app.setAsDefaultProtocolClient = () => false
+const preferences = require('../Desktop/preferences.cjs')
+const { WindowLayout } = require('../Desktop/window-layout.cjs')
+let panel, chatWindow
+let current = preferences.read()
+function applyLayout(reveal = false) {
+  current = preferences.read()
+  nativeTheme.themeSource = current.syncAiTheme && current.theme !== 'system' ? (current.theme === 'dark' ? 'dark' : 'light') : 'system'
+  if (chatWindow && !chatWindow.isDestroyed()) {
+    chatWindow.setIcon(path.join(root, 'Desktop/icons', current.palette + '-ai.png'))
+    chatWindow.webContents.send('system-theme-updated')
+  }
+  if (panel) return panel.apply(current, reveal)
+}
+ipcMain.handle('mailpilot:appearance', event => {
+  if (!chatWindow || event.sender !== chatWindow.webContents || event.senderFrame !== event.sender.mainFrame || !current.syncAiTheme) return null
+  const base = { jade:['#23997d','#a2dfcc'], ocean:['#4671d6','#adc5ff'], graphite:['#515e6f','#c1cddc'] }
+  const dark = nativeTheme.shouldUseDarkColors, colors = base[current.palette] || base.jade
+  return { theme: dark ? 'dark' : 'light', accent: current.accentColor || colors[dark ? 1 : 0],
+    background: current.theme === 'paper' ? '#fffdf8' : dark ? '#202e3b' : '#ffffff',
+    secondary: current.theme === 'paper' ? '#f6f1e7' : dark ? '#192632' : '#f2f6f3' }
+})
+process.on('message', msg => {
+  if (msg?.action === 'settings' || msg?.action === 'show') applyLayout(msg.action === 'show')
+})
+ipcMain.handle('mailpilot:panel', async (event, command) => {
+  if (!panel || event.sender !== chatWindow.webContents || event.senderFrame !== event.sender.mainFrame) return 'window'
+  if (command === 'toggle') {
+    const layout = panel.mode === 'window' ? 'sidebar' : 'window'
+    if (process.connected) process.send({ action: 'layout', layout })
+    else spawn(process.execPath, [path.join(root, 'Desktop'), 'ai-' + layout], { detached: true, stdio: 'ignore' }).unref()
+  }
+  if (command === 'collapse') await panel.collapse()
+  return panel.mode
+})
 
 // The CE provider, fetch adapter and proxy retain full control of request headers.
 // Chatbox's productName and version supply Electron's default browser identity.
@@ -41,6 +76,17 @@ ipcMain.handle = (name, handler) => {
 }
 app.on('browser-window-created', (_e, win) => {
   win.webContents.on('will-navigate', (e, url) => { if (!url.startsWith('file:')) e.preventDefault() })
+  if (chatWindow) return
+  chatWindow = win
+  win.setIcon(path.join(root, 'Desktop/icons', current.palette + '-ai.png'))
+  panel = new WindowLayout(win, 'ai', source, mode => {
+    if (!win.isDestroyed()) win.webContents.send('mailpilot:layout', mode)
+  })
+  win.once('ready-to-show', () => setImmediate(() => applyLayout(true)))
+  const watcher = fs.watch(home, (_type, name) => {
+    if (name === 'settings.json') applyLayout()
+  })
+  win.on('closed', () => { watcher.close(); panel = null; chatWindow = null })
 })
 app.on('window-all-closed', () => app.quit())
 require('./dist/main/main.js')

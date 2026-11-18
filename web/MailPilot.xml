@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0" xsi:type="MailApp">
- <Id>fba848b5-d27e-4e60-8ce7-a5f587df65bb</Id><Version>1.0.0.0</Version>
+ <Id>fba848b5-d27e-4e60-8ce7-a5f587df65bb</Id><Version>1.1.0.0</Version>
  <ProviderName>MailPilot</ProviderName><DefaultLocale>zh-CN</DefaultLocale>
  <DisplayName DefaultValue="MailPilot"/><Description DefaultValue="打开本机的正则邮件查找与 AI 助手。"/>
  <IconUrl DefaultValue="https://ionize1080.github.io/MailPilot/icon-32.png"/>

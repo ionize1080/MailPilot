@@ -1,0 +1,10 @@
+{
+  "source": "classic", "mode": "subject", "caseSensitive": false, "limit": 100,
+  "debounceMs": 280, "cacheMiB": 8, "batchSize": 64, "pauseMs": 25, "timeoutMs": 60,
+  "autoRefresh": true, "refreshMinutes": 30, "storeScope": "default", "clientId": "",
+  "theme": "system", "palette": "jade", "accentColor": "", "highlightColor": "#ffe49a",
+  "selectionColor": "", "density": "comfortable", "showSnippet": true, "showFolder": true,
+  "readerFont": "Microsoft YaHei UI", "readerSize": 15, "readerZoom": 100, "expandHeaders": false,
+  "showHighlights": true, "jumpToMatch": true, "searchLayout": "window", "aiLayout": "window",
+  "dockSide": "right", "dockWidth": 420, "readerFormat": "original", "syncAiTheme": true
+}

@@ -10,6 +10,7 @@ MailPilot 的集成代码以 GNU GPL v3 发布，完整文本见 LICENSE。
 | pywin32 311、regex 2025.11.3 | 原许可随模块保留于 Runtime/Lib/site-packages。二进制下载地址和 SHA-256 见 scripts/runtime-lock.json。[pywin32](https://github.com/mhammond/pywin32) · [regex](https://pypi.org/project/regex/2025.11.3/) |
 | JavaScript 依赖 | Chatbox 使用上游 pnpm 锁。独立宿主的运行依赖锁在 chatbox/package-lock.json。发行包 licenses/npm/packages.json 列出依赖版本及对应许可文件，包含构建工具。 |
 | Office.js | 新版 Outlook 任务窗格在运行时从 Microsoft 官方 CDN 加载。[Microsoft 文档](https://learn.microsoft.com/en-us/office/dev/add-ins/develop/referencing-the-javascript-api-for-office-library-from-its-cdn) |
+| DOMPurify 3.4.18 | 阅读窗在隔离的邮件文档中显示经清理的 HTML。MPL-2.0 或 Apache-2.0，运行文件及许可证位于 Desktop/node_modules/dompurify。[上游项目](https://github.com/cure53/DOMPurify) |
 
 ## Chatbox 集成差异
 

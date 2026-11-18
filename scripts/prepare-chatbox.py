@@ -103,3 +103,48 @@ for old, new in [("logger.info('onmessage', transportId, message)", "logger.debu
                  ("logger.info('create', serverParams)", "logger.debug('create', serverParams.command)")]:
     transport = replace_once(transport, old, new)
 (SRC / name).write_text(transport, encoding="utf-8")
+
+# Keep the same Chatbox renderer and conversation mounted when docking.
+name = "src/renderer/components/layout/WindowControls.tsx"
+controls = original(name).replace("IconMinus, type IconProps", "IconLayoutSidebarRight, IconExternalLink, IconMinus, type IconProps")
+controls = controls.replace("type FC, memo", "type FC, memo, useEffect, useState")
+controls = replace_once(controls, "  const windowMaximized = useWindowMaximized()", """  const windowMaximized = useWindowMaximized()
+  const [layout, setLayout] = useState('window')
+  useEffect(() => {
+    const read = () => window.electronAPI.invoke('mailpilot:panel', 'state').then(setLayout)
+    read()
+    const release = window.electronAPI.onMailPilotLayout(setLayout)
+    return release
+  }, [])
+  const docked = layout !== 'window'""")
+controls = replace_once(controls, "      <ControlButton label={t('Minimize')}", """      <ControlButton label={docked ? '切换为独立窗口' : '收纳为侧边栏'}
+        icon={docked ? IconExternalLink : IconLayoutSidebarRight}
+        onClick={() => window.electronAPI.invoke('mailpilot:panel', 'toggle')} />
+      <ControlButton label={docked ? '收起侧边栏' : t('Minimize')}""")
+controls = controls.replace("onClick={() => platform.minimize()}", "onClick={() => docked ? window.electronAPI.invoke('mailpilot:panel', 'collapse') : platform.minimize()}")
+controls = controls.replace("{!windowMaximized ? (", "{docked ? null : !windowMaximized ? (")
+(SRC / name).write_text(controls, encoding="utf-8")
+name = "src/preload/index.ts"
+preload = replace_once(original(name), "  invoke: ipcRenderer.invoke,", """  invoke: ipcRenderer.invoke,
+  onMailPilotLayout: (callback: (mode: string) => void) => {
+    const listener = (_event: unknown, mode: string) => callback(mode)
+    ipcRenderer.on('mailpilot:layout', listener)
+    return () => ipcRenderer.off('mailpilot:layout', listener)
+  },""")
+(SRC / name).write_text(preload, encoding="utf-8")
+name = "src/shared/electron-types.ts"
+types = replace_once(original(name), "  invoke:", "  onMailPilotLayout: (callback: (mode: string) => void) => () => void\n  invoke:")
+(SRC / name).write_text(types, encoding="utf-8")
+name = "src/renderer/hooks/useAppTheme.ts"
+appearance = replace_once(original(name), "  uiStore.setState({", """  const appearance = await window.electronAPI?.invoke('mailpilot:appearance')
+  if (appearance) finalTheme = appearance.theme
+  const root = document.documentElement.style
+  for (const [key, value] of Object.entries({
+    '--chatbox-tint-brand': appearance?.accent, '--chatbox-background-primary': appearance?.background,
+    '--chatbox-background-secondary': appearance?.secondary,
+  })) {
+    if (typeof value === 'string') root.setProperty(key, value)
+    else root.removeProperty(key)
+  }
+  uiStore.setState({""")
+(SRC / name).write_text(appearance, encoding="utf-8")

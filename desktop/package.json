@@ -1,0 +1,8 @@
+{
+  "name": "mailpilot-desktop",
+  "productName": "MailPilot",
+  "version": "0.2.0",
+  "private": true,
+  "main": "main.cjs",
+  "dependencies": { "dompurify": "3.4.18" }
+}

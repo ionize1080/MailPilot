@@ -31,8 +31,15 @@ def main():
         file=home/"Aurora-QA-741.pdf";file.write_bytes(b"MailPilot synthetic filename fixture")
         for title,body,attached in [("Pilot-INV-7701","ordinary",False),("Control","MORNING-9825",False),
                                      ("Attachment receipt","Proof code: JADE-8317",True)]:
-            item=folder.Items.Add("IPM.Note");item.Subject=title;item.Body=body
-            if attached:item.Attachments.Add(str(file))
+            item=folder.Items.Add("IPM.Note");item.Subject=title
+            if title=="Control":
+                item.BodyFormat=3
+            item.Body=body
+            if attached:
+                item.Attachments.Add(str(file))
+                item.HTMLBody="<html><body><p>Proof code: <b>JADE-8317</b></p><table><tr><td>Delivery</td></tr></table></body></html>"
+                item.CC="archive@example.org"
+                item.Categories="Fixture-QA"
             item.Save()
             if item.Parent.EntryID != folder.EntryID:
                 item=item.Move(folder)
@@ -49,14 +56,20 @@ def main():
                                       (r"INV-\d{4}","subject",1)]:
                 r=search(db,dict(pattern=pattern,mode=mode),cfg);assert len(r["items"])==want,(pattern,r)
             second=run();assert second["changed"]==0,second
+            from service import read_mail, dispatch
+            rtf_id=search(db,dict(pattern="MORNING-9825",mode="all"),cfg)["items"][0]["id"]
+            rendered=dispatch("detail",dict(id=rtf_id,pattern="MORNING",mode="full"),cfg,None)
+            assert rendered["html"] and "MORNING" in rendered["html"], "RTF detail is missing"
             time.sleep(1.1)  # PST table timestamps have one-second granularity.
-            item=folder.Items.Item(1); item.Body=item.Body+"\nDelta marker at 18:30";item.Save()
+            item=folder.Items.Find("[Subject] = 'Control'"); item.Body=item.Body+"\nDelta marker at 18:30";item.Save()
             third=run();assert third["changed"]==1,third
             assert len(search(db,dict(pattern="Delta marker",mode="subject_body"),cfg)["items"])==1
             # Read through a real result ID, without marking a personal mail as read.
             rid=search(db,dict(pattern="Aurora-QA",mode="attachment"),cfg)["items"][0]["id"]
-            from service import read_mail
             assert "JADE-8317" in read_mail(db,dict(id=rid))["body"]
+            rich = dispatch("detail",dict(id=rid,pattern="archive",mode="full"),cfg,None)
+            assert "<table" in rich["html"].lower() and rich["marks"]["cc"], rich["fields"].keys()
+            assert search(db,dict(pattern="Fixture-QA",mode="full"),cfg)["items"]
             set_state(db,"lastSync",int(time.time()))
             print(json.dumps(dict(outlook=app.Version,initial=first,unchanged=second,modified=third,scopeCases=5),indent=2))
     finally:

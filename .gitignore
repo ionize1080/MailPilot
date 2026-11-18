@@ -7,3 +7,4 @@ __pycache__/
 *.log
 *.user
 .env
+node_modules/

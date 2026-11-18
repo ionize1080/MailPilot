@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'"
+    />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>MailPilot · 正则查找</title>
+    <link rel="stylesheet" href="ui.css" />
+    <script defer src="common.js"></script>
+    <script defer src="search.js"></script>
+  </head>
+  <body class="search-page">
+    <header id="titlebar"></header>
+    <div class="app-body">
+      <nav id="rail" aria-label="邮件工具"></nav>
+      <main class="workspace">
+        <div class="workarea">
+          <div class="page-heading">
+            <div>
+              <h1>正则查找</h1>
+              <p>按字段查找 Outlook 邮件</p>
+            </div>
+            <img data-art="search" class="heading-art" alt="" />
+          </div>
+          <section class="query-card" aria-label="查找条件">
+            <form id="query">
+              <label class="pattern-box"
+                ><span class="regex-sign" aria-hidden="true">.*</span>
+                <input
+                  id="pattern"
+                  aria-label="正则表达式"
+                  placeholder="输入正则表达式…"
+                  maxlength="2048"
+                  spellcheck="false"
+                  autocomplete="off"
+              /></label>
+              <button type="button" id="case" title="区分大小写" aria-label="区分大小写" aria-pressed="false">
+                Aa</button
+              ><button class="primary" id="submit">查找</button>
+            </form>
+            <div class="filters">
+              <label
+                ><span>范围</span
+                ><select id="mode" aria-label="查找范围"></select></label
+              ><label
+                ><span>文件夹</span
+                ><select id="folder" aria-label="文件夹">
+                  <option value="">全部文件夹</option>
+                </select></label
+              >
+            </div>
+          </section>
+          <div id="notice" role="alert" hidden></div>
+          <div class="results-head">
+            <h2>查找结果 <span id="count" hidden></span></h2>
+            <span id="timing" role="status"></span>
+          </div>
+          <section id="results" aria-label="查找结果"></section>
+          <button id="more" class="btn more" hidden>加载更多</button>
+        </div>
+        <footer class="statusbar">
+          <span class="status-dot"></span><span id="status" role="status">正在读取索引…</span>
+          <div id="sync-actions"></div>
+        </footer>
+      </main>
+    </div>
+  </body>
+</html>

@@ -5,12 +5,8 @@ import winreg
 from pathlib import Path
 
 HOME = Path(os.environ.get("MAILPILOT_HOME") or Path(os.environ["LOCALAPPDATA"]) / "MailPilot")
-DEFAULTS = {
-    "indexDir": str(HOME / "Index"), "chatDir": str(HOME / "Chatbox"), "source": "classic",
-    "mode": "subject", "caseSensitive": False, "limit": 100, "debounceMs": 280,
-    "cacheMiB": 8, "batchSize": 64, "pauseMs": 25, "timeoutMs": 60,
-    "autoRefresh": True, "refreshMinutes": 30, "storeScope": "default", "clientId": "",
-}
+DEFAULTS = json.loads(Path(__file__).with_name("preferences.json").read_text(encoding="utf-8")) | {
+    "indexDir": str(HOME / "Index"), "chatDir": str(HOME / "Chatbox")}
 
 def settings():
     path = HOME / "settings.json"

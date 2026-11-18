@@ -6,6 +6,7 @@ using Microsoft.Win32;
 namespace MailPilot {
     internal static class Deployment {
         const string Id="{85C590EA-8141-4C33-99A0-F304FFA27D7E}", Prog="MailPilot.Outlook";
+        const string PaneId="{3AD910BB-5093-45FA-AB6E-68094BC37F22}", PaneProg="MailPilot.DockHost";
         const string Classes=@"Software\Classes\", Addins=@"Software\Microsoft\Office\Outlook\Addins\MailPilot.Outlook";
         static RegistryView[] Views { get { return Environment.Is64BitOperatingSystem ?
             new[]{RegistryView.Registry64,RegistryView.Registry32}:new[]{RegistryView.Registry32}; } }
@@ -15,15 +16,19 @@ namespace MailPilot {
         static void Put(RegistryKey root,string key,string name,object value) {
             using(var k=root.CreateSubKey(key)) k.SetValue(name,value);
         }
-        public static void Enable() {
+        static void Register(RegistryKey r,string id,string prog,string type) {
             string assembly=AssemblyName.GetAssemblyName(Dll).FullName;
-            foreach(var view in Views) using(var r=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,view)) {
-                string cls=Classes+@"CLSID\"+Id, server=cls+@"\InprocServer32";
-                Put(r,cls,null,"MailPilot.Connect"); Put(r,cls+@"\ProgId",null,Prog);
-                Put(r,Classes+Prog+@"\CLSID",null,Id);
+                string cls=Classes+@"CLSID\"+id, server=cls+@"\InprocServer32";
+                Put(r,cls,null,type); Put(r,cls+@"\ProgId",null,prog);
+                Put(r,Classes+prog+@"\CLSID",null,id);
                 Put(r,server,null,"mscoree.dll"); Put(r,server,"ThreadingModel","Both");
-                Put(r,server,"Class","MailPilot.Connect"); Put(r,server,"Assembly",assembly);
+                Put(r,server,"Class",type); Put(r,server,"Assembly",assembly);
                 Put(r,server,"RuntimeVersion","v4.0.30319"); Put(r,server,"CodeBase",CodeBase);
+        }
+        public static void Enable() {
+            foreach(var view in Views) using(var r=RegistryKey.OpenBaseKey(RegistryHive.CurrentUser,view)) {
+                Register(r,Id,Prog,"MailPilot.Connect");Register(r,PaneId,PaneProg,PaneProg);
+                Put(r,Classes+@"CLSID\"+PaneId+@"\Control",null,"");
                 Put(r,Addins,"FriendlyName","MailPilot"); Put(r,Addins,"Description","正则邮件查找与只读 AI 助手");
                 Put(r,Addins,"LoadBehavior",3);
                 Put(r,Classes+"mailpilot",null,"URL:MailPilot"); Put(r,Classes+"mailpilot","URL Protocol","");
@@ -42,6 +47,8 @@ namespace MailPilot {
                 r.DeleteSubKeyTree(Addins,false);
                 r.DeleteSubKeyTree(Classes+@"CLSID\"+Id,false);
                 r.DeleteSubKeyTree(Classes+Prog,false);
+                r.DeleteSubKeyTree(Classes+@"CLSID\"+PaneId,false);
+                r.DeleteSubKeyTree(Classes+PaneProg,false);
                 if(string.Equals(Read(r,Classes+@"mailpilot\shell\open\command",null),Command,StringComparison.OrdinalIgnoreCase))
                     r.DeleteSubKeyTree(Classes+"mailpilot",false);
             }
