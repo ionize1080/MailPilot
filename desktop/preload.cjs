@@ -12,6 +12,7 @@ for (const name of [
   'read',
   'link',
   'images',
+  'attachment',
 ]) {
   api[name] = (...args) => ipcRenderer.invoke('mailpilot:' + name, ...args)
 }

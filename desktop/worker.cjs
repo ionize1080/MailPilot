@@ -40,11 +40,31 @@ class MailWorker {
     for (const request of this.pending.values()) request.reject(error)
     this.pending.clear()
   }
-  call(method, params = {}) {
+  call(method, params = {}, signal) {
     if (this.closed) return Promise.reject(Error('邮件进程已关闭'))
+    if (signal?.aborted) return Promise.reject(Error('已切换附件'))
     return new Promise((resolve, reject) => {
       const id = ++this.sequence
-      this.pending.set(id, { resolve, reject })
+      if (signal) {
+        const cancel = () => {
+          if (!this.pending.delete(id)) return
+          this.child.stdin.write(
+            JSON.stringify({ method: 'cancel_request', params: { requestId: id } }) + '\n'
+          )
+          reject(Error('已切换附件'))
+        }
+        signal.addEventListener('abort', cancel, { once: true })
+        this.pending.set(id, {
+          resolve: (value) => {
+            signal.removeEventListener('abort', cancel)
+            resolve(value)
+          },
+          reject: (error) => {
+            signal.removeEventListener('abort', cancel)
+            reject(error)
+          },
+        })
+      } else this.pending.set(id, { resolve, reject })
       this.child.stdin.write(JSON.stringify({ id, method, params }) + '\n')
     })
   }

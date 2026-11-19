@@ -8,20 +8,35 @@ import zipfile
 from pathlib import Path
 from runtime import ROOT,OUT
 
-VERSION="0.2.1"
+VERSION="0.3.0"
 
 def stage_desktop():
     src, dest = ROOT/"desktop", OUT/"Desktop"
     shutil.copytree(src, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("node_modules"))
-    vendor = src/"node_modules/dompurify"
-    required_version = json.loads((src/"package.json").read_text(encoding="utf-8"))["dependencies"]["dompurify"]
-    installed = json.loads((vendor/"package.json").read_text(encoding="utf-8")) if (vendor/"package.json").is_file() else {}
-    if installed.get("version") != required_version or not (vendor/"dist/purify.min.js").is_file():
-        subprocess.run(["npm.cmd","ci","--ignore-scripts","--no-audit","--no-fund"], cwd=src, check=True)
-    target = dest/"node_modules/dompurify"
-    (target/"dist").mkdir(parents=True, exist_ok=True)
-    for name in ("dist/purify.min.js","LICENSE","package.json"):
-        shutil.copy2(vendor/name, target/name)
+    modules = src/"node_modules"
+    deps = json.loads((src/"package.json").read_text(encoding="utf-8"))["dependencies"]
+    if any(not (modules/pkg/"package.json").is_file() or
+           json.loads((modules/pkg/"package.json").read_text(encoding="utf-8"))["version"] != version
+           for pkg, version in deps.items()):
+        subprocess.run(["npm.cmd","ci","--ignore-scripts","--omit=optional","--no-audit","--no-fund"], cwd=src, check=True)
+    runtime = {"dompurify":["dist/purify.min.js"], "marked":["lib/marked.esm.js"],
+               "office-oxide-wasm":["web/office_oxide.js","web/office_oxide_bg.wasm","LICENSE-MIT","LICENSE-APACHE"],
+               "@silurus/ooxml":["dist"], "@silurus/ooxml-legacy-office":["dist"],
+               "pdfjs-dist":["build/pdf.min.mjs","build/pdf.worker.min.mjs","build/pdf.renderer.min.mjs",
+                             "cmaps","standard_fonts","iccs","wasm"]}
+    for pkg, assets in runtime.items():
+        vendor, target = modules/pkg, dest/"node_modules"/pkg
+        for name in assets + ["package.json", "LICENSE", "LICENSE.md", "THIRD_PARTY_NOTICES.md"]:
+            source = vendor/name
+            if source.is_dir():
+                shutil.copytree(source, target/name, dirs_exist_ok=True, ignore=shutil.ignore_patterns("types","*.map"))
+            elif source.is_file():
+                (target/name).parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(source, target/name)
+    # Browsers and module workers resolve the legacy reader's peer import without a bundler.
+    for module in (dest/"node_modules/@silurus/ooxml-legacy-office/dist").glob("legacy-source-*.js"):
+        code = module.read_text(encoding="utf-8").replace('"@silurus/ooxml/internal/companion"', '"../../ooxml/dist/internal-companion.mjs"')
+        module.write_text(code, encoding="utf-8")
     shutil.copy2(ROOT/"chatbox/bootstrap.cjs",OUT/"Chatbox/bootstrap.cjs")
 def dependencies():
     licenses=OUT/"licenses/npm"
@@ -61,7 +76,9 @@ def main():
     stage_desktop()
     required=("MailPilot.exe","MailPilot.Outlook.dll","Chatbox/dist/main/main.js","Chatbox/dist/preload/index.js",
               "Chatbox/dist/renderer/index.html","Chatbox/source-build.json","Browser/electron.exe","Runtime/python.exe",
-              "Desktop/main.cjs","Desktop/search.html","Desktop/settings.html","Desktop/reader.html","Desktop/icons/mailpilot.ico")
+              "Desktop/main.cjs","Desktop/search.html","Desktop/settings.html","Desktop/reader.html","Desktop/icons/mailpilot.ico",
+              "Desktop/viewer.html","Desktop/attachment-host.cjs","Desktop/node_modules/@silurus/ooxml/dist/docx_parser_bg.wasm",
+              "Desktop/node_modules/pdfjs-dist/build/pdf.worker.min.mjs")
     for path in required:
         if not (OUT/path).is_file():raise SystemExit("Missing: "+path)
     for n in ("README.md","LICENSE","THIRD-PARTY.md","TESTING.md","Enable.cmd","Disable.cmd"):

@@ -75,6 +75,17 @@ def main():
             assert "JADE-8317" in read_mail(db,dict(id=rid))["body"]
             rich = dispatch("detail",dict(id=rid,pattern="archive",mode="full"),cfg,None)
             assert "<table" in rich["html"].lower() and rich["marks"]["cc"], rich["fields"].keys()
+            hit = search(db,dict(pattern="Aurora-QA",mode="attachment"),cfg)["items"][0]
+            transfer = dict(id=rid,key=hit["key"],stamp=rich["stamp"],action="save")
+            downloaded = home/"原件另存为.pdf"
+            assert dispatch("attachment_transfer",transfer|dict(index=0,destination=str(downloaded)),cfg,None)["count"]==1
+            assert downloaded.read_bytes()==file.read_bytes()
+            target = home/"全部附件"
+            target.mkdir()
+            (target/file.name).write_bytes(b"keep")
+            assert dispatch("attachment_transfer",transfer|dict(index=None,destination=str(target)),cfg,None)=={"count":1,"errors":[]}
+            assert (target/file.name).read_bytes()==b"keep"
+            assert (target/(file.stem+" (2).pdf")).read_bytes()==file.read_bytes()
             assert search(db,dict(pattern="Fixture-QA",mode="full"),cfg)["items"]
             set_state(db,"lastSync",int(time.time()))
             print(json.dumps(dict(outlook=app.Version,initial=first,unchanged=second,modified=third,scopeCases=5),indent=2))

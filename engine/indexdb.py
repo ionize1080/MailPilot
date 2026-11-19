@@ -1,5 +1,8 @@
 import json
 import hashlib
+import ctypes
+import datetime
+from functools import lru_cache
 import sqlite3
 import time
 import zlib
@@ -14,6 +17,32 @@ HAN = re.compile(r"[\u3400-\u9fff]")
 def terms(text):
     # Inserting a separator before Han characters makes two-character Chinese terms indexable.
     return HAN.sub(lambda m: "\x1f" + m[0], text.translate(FOLD))
+
+# Use Windows' Simplified Chinese dictionary order for names and subjects, including numeric runs.
+_map_string = ctypes.WinDLL("kernel32", use_last_error=True).LCMapStringEx
+_map_string.argtypes = [ctypes.c_wchar_p, ctypes.c_ulong, ctypes.c_wchar_p, ctypes.c_int,
+                        ctypes.c_void_p, ctypes.c_int, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_ssize_t]
+
+@lru_cache(maxsize=2048)
+def text_order(value):
+    value = value.strip().replace("\0", " ")
+    flags = 0x400 | 0x1 | 0x8  # LCMAP_SORTKEY, NORM_IGNORECASE, SORT_DIGITSASNUMBERS
+    size = _map_string("zh-CN", flags, value, -1, None, 0, None, None, 0)
+    if not size:
+        raise ctypes.WinError(ctypes.get_last_error())
+    buf = ctypes.create_string_buffer(size)
+    if not _map_string("zh-CN", flags, value, -1, buf, size, None, None, 0):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return buf.raw
+
+def date_order(value):
+    try:
+        stamp = datetime.datetime.fromisoformat(value)
+        if stamp.tzinfo:
+            stamp = stamp.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+        return stamp.isoformat(timespec="microseconds")
+    except (ValueError, OverflowError):
+        return value
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS mail(
@@ -63,6 +92,26 @@ def connect(path, cache=8):
             db.rollback()
             db.close()
             raise
+    if db.execute("PRAGMA user_version").fetchone()[0] < 3:
+        db.execute("BEGIN IMMEDIATE")
+        try:
+            if db.execute("PRAGMA user_version").fetchone()[0] < 3:
+                db.execute("ALTER TABLE mail ADD COLUMN date_sort TEXT NOT NULL DEFAULT ''")
+                db.execute("ALTER TABLE mail ADD COLUMN sender_sort BLOB NOT NULL DEFAULT X''")
+                db.execute("ALTER TABLE mail ADD COLUMN subject_sort BLOB NOT NULL DEFAULT X''")
+                db.create_function("date_order", 1, date_order)
+                db.create_function("text_order", 1, text_order)
+                db.execute("UPDATE mail SET date_sort=date_order(received), sender_sort=text_order(sender), subject_sort=text_order(subject)")
+                db.execute("CREATE INDEX mail_received_order ON mail(date_sort DESC,id DESC)")
+                for column in ("sender_sort", "subject_sort"):
+                    db.execute(f"CREATE INDEX mail_{column} ON mail({column},date_sort DESC,id DESC)")
+                db.execute("DROP INDEX IF EXISTS mail_date")
+                db.execute("PRAGMA user_version=3")
+            db.commit()
+        except Exception:
+            db.rollback()
+            db.close()
+            raise
     db.execute("PRAGMA synchronous=NORMAL")
     return db
 
@@ -93,17 +142,19 @@ def save(db, item):
             meta["links"] = list(markup.links)
         if markup.alternatives:
             meta["imageAlt"] = list(markup.alternatives)
-    row = db.execute("""INSERT INTO mail(store,entry,folder_id,folder,stamp,subject,sender,received,body,attachments,link,metadata,html,inline_images)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(store,entry) DO UPDATE SET
+    row = db.execute("""INSERT INTO mail(store,entry,folder_id,folder,stamp,subject,sender,received,body,attachments,link,metadata,html,inline_images,date_sort,sender_sort,subject_sort)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(store,entry) DO UPDATE SET
         folder_id=excluded.folder_id,folder=excluded.folder,stamp=excluded.stamp,subject=excluded.subject,
         sender=excluded.sender,received=excluded.received,body=excluded.body,
         attachments=excluded.attachments,link=excluded.link,metadata=excluded.metadata,
-        html=excluded.html,inline_images=excluded.inline_images RETURNING id""",
+        html=excluded.html,inline_images=excluded.inline_images,date_sort=excluded.date_sort,
+        sender_sort=excluded.sender_sort,subject_sort=excluded.subject_sort RETURNING id""",
         (item["store"], item["entry"], item["folder_id"], item["folder"], item["stamp"],
          item["subject"], item["sender"], item["received"], pack_body(item["body"]),
          json.dumps(item["attachments"], ensure_ascii=False), item.get("link", ""),
          json.dumps(meta, ensure_ascii=False), pack_body(html) if html else None,
-         pack_body(json.dumps(images)) if images else None)).fetchone()[0]
+         pack_body(json.dumps(images)) if images else None, date_order(item["received"]),
+         text_order(item["sender"]), text_order(item["subject"]))).fetchone()[0]
     db.execute("DELETE FROM grams WHERE rowid=?", (row,))
     db.execute("INSERT INTO grams(rowid,subject,body,attachment) VALUES(?,?,?,?)",
                (row, terms(item["subject"]), terms(item["body"]), terms("\n".join(item["attachments"]))))

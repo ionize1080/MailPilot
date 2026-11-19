@@ -2,11 +2,16 @@
 import base64
 import contextlib
 import os
+import sys
 from pathlib import Path
 from config import db_path, settings
 from indexdb import connect, save
 
 cfg = settings()
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from preview_fixtures import create
+files_dir = Path(os.environ["MAILPILOT_HOME"]) / "originals"
+create(files_dir)
 assert os.environ.get("MAILPILOT_HOME") and not cfg["autoRefresh"]
 assert db_path(cfg).is_relative_to(Path(os.environ["MAILPILOT_HOME"]).resolve())
 with contextlib.closing(connect(db_path(cfg))) as db, db:
@@ -31,6 +36,13 @@ with contextlib.closing(connect(db_path(cfg))) as db, db:
                 "sent":["2026-11-17T02:00:00Z"],"importance":["高"],"categories":["采购"],
                 "headers":["Message-ID: <aurora.qa@example.org>\r\nX-Review: 📨audit-only"],
                 "files":[{"name":attachment,"size":29644,"type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}]}
+        names = [attachment]
+        (files_dir/attachment).write_bytes((files_dir/"报价单.xlsx").read_bytes())
+        if i == 0:
+            names += ["确认书.pdf", "交付说明.docx", "进度汇报.pptx", "记录.md", "说明.txt", "签名.png", "数据.csv", "收货照片", "缩略图.webp"]
+            names.extend(p.name for p in files_dir.iterdir() if p.suffix in (".doc",".xls",".ppt"))
+        meta["files"] = [dict(name=name,size=(files_dir/name).stat().st_size,
+                              type="image/jpeg" if name == "收货照片" else "") for name in names]
         save(db, dict(store="qa",entry=str(i),folder="收件箱 / 采购",folder_id="purchase",stamp="1",subject=subject,
              sender=sender,received=f"2026-11-{18-i}T01:16:00Z",body=text,html=html,inlineImages={"signature":inline},
-             metadata=meta,attachments=[attachment]))
+             metadata=meta,attachments=names))

@@ -4,11 +4,12 @@ import random
 import sqlite3
 import tempfile
 import urllib.error
+from unittest.mock import patch
 from pathlib import Path
 from config import DEFAULTS
 from graph import API, sync_pages
 from indexdb import SCHEMA,connect,save,pack_body,unpack_body,terms,state
-from search import MODES,search,query,highlights
+from search import MODES,SORTS,search,query,highlights
 
 def row(i, text):
     return dict(store="s",entry=str(i),folder="/in",folder_id="in",stamp="1",subject=text,
@@ -71,6 +72,35 @@ def envelope():
         with db: save(db,original)
         assert not search(db,dict(pattern="Archive-only",mode="full"),DEFAULTS)["items"]
         print("PASS sender/delegate/full scope, metadata FTS updates, UTF-16 and zero-width highlighting")
+
+def sort_pages():
+    from indexdb import date_order, text_order
+    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(connect(Path(tmp)/"sort.db")) as db:
+        names = ["王明", "陈安", "李平", "a", "A", "项目10", "项目2", "", "赵一", "陈安"]
+        dates = ["2026-11-10T00:00:00Z", "2026-11-10T08:00:00.001+08:00", "2026-11-09T16:00:00-08:00"]
+        with db:
+            for i in range(93):
+                save(db, row(i, "Order "+names[(i//3)%10]) | {"received":dates[i%3], "sender":names[i%10], "folder":str(i%2)})
+        assert text_order("陈安") < text_order("李平") < text_order("王明") < text_order("赵一")
+        assert text_order("项目2") < text_order("项目10") and text_order("A") == text_order("a")
+        for sort in SORTS:
+            field, direction = sort.split('-')
+            for folder in ("", "1"):
+                args = dict(pattern="Order", mode="subject", sort=sort, folder=folder)
+                rows = [r for r in db.execute("SELECT * FROM mail") if not folder or r["folder"]==folder]
+                expected = sorted(rows,key=lambda r:(date_order(r["received"]),r["id"]), reverse=field!="date" or direction=="desc")
+                if field!="date":
+                    expected.sort(key=lambda r:text_order(r[field]),reverse=direction=="desc")
+                ids, cursor = [], None
+                while True:
+                    page = search(db,args|{"limit":4,"cursor":cursor},DEFAULTS)
+                    assert not page["partial"]
+                    ids.extend(h["id"] for h in page["items"])
+                    cursor = page["next"]
+                    if not cursor: break
+                assert ids == [r["id"] for r in expected], (sort,folder)
+                assert ids == [r["id"] for r in search(db,args|{"limit":1000},DEFAULTS,force_scan=True)["items"]]
+        print("PASS six global sorts, Chinese dictionary/numeric order, equal keys, timezone offsets, folder and multi-page traversal")
 
 def surrogate_mail():
     subject = "预算\ud83d\udce8📅"
@@ -160,5 +190,51 @@ def graph_rounds():
         expired=True
         assert run()["removed"]==1 and db.execute("SELECT count(*) FROM mail").fetchone()[0]==0
         print("PASS Graph folder, delta, attachment pagination, removal and expired-token recovery")
+
+def attachments():
+    from attachments import manifest, transfer, filename
+    from indexdb import mail_key
+    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(connect(Path(tmp)/"graph.db")) as db:
+        folder = Path(tmp)
+        originals = [(b'first', 'part/1'), (b'other', 'part+2')]
+        files = [dict(name="同名.txt",size=len(data),graphId=aid) for data,aid in originals]
+        files.append(dict(name="共享文件",graphId="cloud",kind="#microsoft.graph.referenceAttachment"))
+        record = row(0, "attachment") | {"store":"account","entry":"msg+/",
+                "attachments":[f["name"] for f in files],"metadata":{"files":files}}
+        with db: rid = save(db,record)
+        args = dict(id=rid,key=mail_key("account","msg+/"),stamp="1")
+        source, meta, manifest_files = manifest(db,args)
+        assert manifest_files == files
+        for patch_arg in ({"stamp":"outdated"}, {"key":"wrong"}):
+            try: manifest(db,args|patch_arg)
+            except ValueError: pass
+            else: raise AssertionError("stale attachment accepted")
+        assert filename('CON.txt') == '_CON.txt' and '/' not in filename('../a/name.docx')
+        base = API + '/me/messages/msg%2B%2F'
+        def get(url, destination=None):
+            if url == base+'?$select=changeKey': return {"changeKey":"1"}
+            if url.startswith(base+'/attachments?'):
+                return {"value":[dict(name="同名.txt",size=5,id="part/1")],"@odata.nextLink":API+"/next"}
+            if url == API+'/next': return {"value":[dict(name="同名.txt",size=5,id="part+2")]}
+            if url == base+'/attachments/part%2F1/$value': destination.write_bytes(b'first'); return
+            if url == base+'/attachments/part%2B2/$value': destination.write_bytes(b'other'); return
+            raise AssertionError(url)
+        cfg = DEFAULTS|{"source":"graph"}
+        with patch("graph.graph_connection", return_value=(get,"account")):
+            result = transfer(source,meta,files,cfg,dict(action="save",index=None,destination=tmp))
+            assert result["count"] == 2 and len(result["errors"])==1
+            assert (folder/'同名.txt').read_bytes() == b'first' and (folder/'同名 (2).txt').read_bytes()==b'other'
+            legacy = [{"name":"同名.txt","size":5}]*2
+            transfer(source,meta,legacy,cfg,dict(action="preview",index=1,destination=str(folder/'legacy')))
+            assert (folder/'legacy').read_bytes()==b'other'
+        def interrupted(url, destination):
+            destination.write_bytes(b'incomplete')
+            raise IOError('interrupted')
+        with patch("graph.graph_connection",return_value=(interrupted,"account")):
+            try: transfer(source,meta,files,cfg,dict(action="save",index=0,destination=str(folder/'同名.txt')))
+            except IOError: pass
+            else: raise AssertionError("incomplete transfer accepted")
+        assert (folder/'同名.txt').read_bytes()==b'first' and not list(folder.glob('.mailpilot-*'))
+        print("PASS Graph raw and legacy attachment lookup, duplicate names, cloud links, stale IDs and interrupted writes")
 if __name__=="__main__":
-    run();envelope();surrogate_mail();upgrade();graph_rounds()
+    run();sort_pages();envelope();surrogate_mail();upgrade();graph_rounds();attachments()

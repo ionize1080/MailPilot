@@ -5,6 +5,7 @@ const path = require('node:path')
 const { spawn } = require('node:child_process')
 const prefs = require('./preferences.cjs')
 const MailWorker = require('./worker.cjs')
+const attachments = require('./attachment-host.cjs')
 const { WindowLayout, pane } = require('./window-layout.cjs')
 
 app.setPath('userData', path.join(prefs.home, 'Desktop'))
@@ -53,6 +54,7 @@ function settings(patch) {
   }
   for (const v of [...views.values()]) {
     const switchSource = v.followDefault && previous.source !== cfg.source
+    if (indexChanged || switchSource) attachments.reset(v)
     if (v.page === 'reader' && (indexChanged || switchSource)) {
       v.win.close()
       continue
@@ -88,7 +90,7 @@ function view(page, source, followDefault = false, query = null) {
     return v
   }
   const sizes = {
-    search: [1020, 720, 480, 390],
+    search: [1240, 790, 780, 420],
     settings: [930, 730, 540, 420],
     reader: [900, 780, 420, 360],
   }
@@ -119,7 +121,7 @@ function view(page, source, followDefault = false, query = null) {
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   win.webContents.on('will-navigate', (e) => e.preventDefault())
   win.webContents.on('will-frame-navigate', (e, details) => {
-    if (!details?.isMainFrame && !['about:blank', 'about:srcdoc'].includes(details?.url || e.url))
+    if (!details?.isMainFrame && !['about:blank', 'about:srcdoc', attachments.frameURL].includes(details?.url || e.url))
       e.preventDefault()
   })
   if (page === 'search')
@@ -129,6 +131,7 @@ function view(page, source, followDefault = false, query = null) {
     else win.show()
   })
   win.on('closed', () => {
+    attachments.reset(v)
     views.delete(id)
     releaseWorkers()
     maybeQuit()
@@ -228,17 +231,18 @@ handle('mail', ['search', 'reader'], (v, name, args) => {
   const allowed =
     v.page === 'reader'
       ? ['detail', 'preview_marks', 'open']
-      : ['search_mail', 'index_status', 'list_folders', 'refresh', 'pause', 'auto', 'open']
+      : ['search_mail', 'index_status', 'list_folders', 'refresh', 'pause', 'auto', 'open', 'detail', 'preview_marks']
   if (!allowed.includes(name)) throw Error('未知操作')
   return worker(v.source).call(name, args)
 })
 handle('read', ['search'], (v, args) => {
   view('reader', v.source, v.followDefault, args)
 })
-handle('images', ['reader'], (v, allow) => {
+handle('attachment', ['search', 'reader'], (v, action, args) => attachments.handle(v, worker(v.source), action, args))
+handle('images', ['search', 'reader'], (v, allow) => {
   v.externalImages = allow === true
 })
-handle('link', ['reader'], (_v, link) => {
+handle('link', ['search', 'reader'], (_v, link) => {
   const url = new URL(link)
   if (['https:', 'http:', 'mailto:'].includes(url.protocol)) return shell.openExternal(url.href)
 })
@@ -258,6 +262,7 @@ else {
     .whenReady()
     .then(() => {
       cfg = prefs.read()
+      attachments.install()
       theme()
       session.defaultSession.setPermissionRequestHandler((_wc, _perm, done) => done(false))
       session.defaultSession.webRequest.onBeforeRequest(
@@ -265,7 +270,7 @@ else {
         (details, done) => {
           const reader = views.get(details.webContentsId)
           done({
-            cancel: !(reader?.page === 'reader' && reader.externalImages && details.resourceType === 'image'),
+            cancel: !(reader?.externalImages && details.resourceType === 'image' && details.frame?.url === 'about:srcdoc'),
           })
         }
       )

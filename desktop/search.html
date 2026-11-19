@@ -4,12 +4,16 @@
     <meta charset="utf-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self'; font-src 'self'"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https: http:; font-src 'self'; frame-src 'self' about: mailpilot-preview:"
     />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>MailPilot · 正则查找</title>
     <link rel="stylesheet" href="ui.css" />
     <script defer src="common.js"></script>
+    <script defer src="node_modules/dompurify/dist/purify.min.js"></script>
+    <script defer src="rich-body.js"></script>
+    <script defer src="attachment-ui.js"></script>
+    <script defer src="reader.js"></script>
     <script defer src="search.js"></script>
   </head>
   <body class="search-page">
@@ -56,8 +60,9 @@
           <div id="notice" role="alert" hidden></div>
           <div class="results-head">
             <h2>查找结果 <span id="count" hidden></span></h2>
-            <span id="timing" role="status"></span>
+            <label class="sort-control"><span>排序</span><select id="sort" aria-label="结果排序"></select></label>
           </div>
+          <div id="timing" role="status"></div>
           <section id="results" aria-label="查找结果"></section>
           <button id="more" class="btn more" hidden>加载更多</button>
         </div>
@@ -66,6 +71,8 @@
           <div id="sync-actions"></div>
         </footer>
       </main>
+      <div id="splitter" role="separator" tabindex="0" aria-label="调整邮件列表宽度" aria-orientation="vertical" aria-controls="results reading-pane" title="拖动调整列表宽度，双击恢复默认" hidden></div>
+      <aside class="reading-pane" id="reading-pane" aria-label="邮件详情" hidden></aside>
     </div>
   </body>
 </html>

@@ -11,7 +11,7 @@ using Extensibility;
 using Office = Microsoft.Office.Core;
 
 [assembly: AssemblyVersion("0.1.0.0")]
-[assembly: AssemblyFileVersion("0.2.1.0")]
+[assembly: AssemblyFileVersion("0.3.0.0")]
 [assembly: ComVisible(false)]
 namespace MailPilot {
     [ComVisible(true), Guid("E6946569-C68F-49E1-BEFC-727F546F20B9"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]

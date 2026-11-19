@@ -21,6 +21,8 @@ const choices = {
   searchLayout: ['window', 'sidebar'],
   aiLayout: ['window', 'sidebar'],
   readerFormat: ['original', 'plain'],
+  readerLayout: ['pane', 'window'],
+  defaultSort: ['date-desc', 'date-asc', 'sender-asc', 'sender-desc', 'subject-asc', 'subject-desc'],
 }
 const limits = {
   limit: [1, 1000],

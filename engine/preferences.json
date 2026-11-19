@@ -6,5 +6,6 @@
   "selectionColor": "", "density": "comfortable", "showSnippet": true, "showFolder": true,
   "readerFont": "Microsoft YaHei UI", "readerSize": 15, "readerZoom": 100, "expandHeaders": false,
   "showHighlights": true, "jumpToMatch": true, "searchLayout": "window", "aiLayout": "window",
-  "dockSide": "right", "dockWidth": 420, "readerFormat": "original", "syncAiTheme": true
+  "dockSide": "right", "dockWidth": 420, "readerFormat": "original", "syncAiTheme": true,
+  "readerLayout": "pane", "defaultSort": "date-desc"
 }

@@ -4,7 +4,7 @@ import sqlite3
 import time
 from re import _constants as op, _parser
 import regex
-from indexdb import terms, unpack_body, mail_key
+from indexdb import terms, unpack_body, mail_key, date_order, text_order
 from message import message_fields
 
 MODES = {"subject": ("subject",), "subject_body": ("subject", "body"),
@@ -14,6 +14,34 @@ MODES = {"subject": ("subject",), "subject_body": ("subject", "body"),
 SAFE_RUN = re.compile(r"[a-zA-Z0-9 _./:@#%+=,\u3400-\u9fff-]+")
 # Only plan the common subset for which Python re and regex VERSION0 agree.
 UNSUPPORTED = re.compile(r"\(\?(?!:)|\(\*|\\(?![dDsSwWbBAZntfr\\.^$|?*+()[\]{}\-/])|\[\[|&&|~~|--|\|\|")
+
+SORT_FIELDS = {"date": "date_sort", "sender": "sender_sort", "subject": "subject_sort"}
+SORTS = [f"{field}-{direction}" for field in SORT_FIELDS for direction in ("desc", "asc")]
+
+def ordering(sort, cursor, where, params):
+    if sort not in SORTS:
+        raise ValueError("未知排序方式。")
+    field, direction = sort.split("-")
+    key = "m." + SORT_FIELDS[field]
+    op = ">" if direction == "asc" else "<"
+    if cursor is not None:
+        if isinstance(cursor, list) and len(cursor) == 2 and sort == "date-desc":
+            received, ident = cursor
+        elif isinstance(cursor, dict) and cursor.get("sort") == sort:
+            received, ident = cursor["received"], cursor["id"]
+        else:
+            raise ValueError("排序已更改，请重新查找。")
+        date = date_order(received)
+        if field == "date":
+            where.append(f"({key},m.id){op}(?,?)")
+            params.extend((date, int(ident)))
+        else:
+            text = text_order(cursor["value"])
+            where.append(f"({key}{op}? OR ({key}=? AND (m.date_sort,m.id)<(?,?)))")
+            params.extend((text, text, date, int(ident)))
+    direction = direction.upper()
+    tie = f"m.id {direction}" if field == "date" else "m.date_sort DESC,m.id DESC"
+    return f"{key} {direction},{tie}"
 
 def literal_clause(run):
     choices = [terms(s) for s in SAFE_RUN.findall(run)]
@@ -159,10 +187,8 @@ def search(db, args, cfg, cancel=lambda:False, force_scan=False):
     if args.get("folder"):
         where.append("m.folder=?")
         params.append(args["folder"])
-    cursor = args.get("cursor")
-    if cursor:
-        where.append("(m.received,m.id)<(?,?)")
-        params.extend([cursor[0], int(cursor[1])])
+    sort = args.get("sort", "date-desc")
+    order = ordering(sort, args.get("cursor"), where, params)
     where_sql = " WHERE " + " AND ".join(where) if where else ""
     columns = "m.id,m.subject,m.sender,m.received,m.folder,m.store,m.entry"
     if "body" in fields:
@@ -171,7 +197,7 @@ def search(db, args, cfg, cancel=lambda:False, force_scan=False):
         columns += ",m.attachments"
     if "sender" in fields:
         columns += ",m.metadata"
-    sql = "SELECT " + columns + " FROM mail m" + where_sql + " ORDER BY m.received DESC,m.id DESC"
+    sql = "SELECT " + columns + " FROM mail m" + where_sql + " ORDER BY " + order
     items, scanned, reason, next_page = [], 0, "", None
     deadline = time.monotonic() + 25
     def stopped():
@@ -198,7 +224,10 @@ def search(db, args, cfg, cancel=lambda:False, force_scan=False):
                     if position is None:
                         continue
                     if len(items) == limit:
-                        next_page = [items[-1]["received"], items[-1]["id"]]
+                        last = items[-1]
+                        next_page = [last["received"], last["id"]] if sort == "date-desc" else {
+                            "sort": sort, "received": last["received"], "id": last["id"],
+                            "value": last.get(sort.split("-")[0], "")}
                     else:
                         begin, end = position
                         left, right = max(0, begin-32), begin+100

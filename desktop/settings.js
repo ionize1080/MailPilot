@@ -30,8 +30,8 @@ const keys = {
     'showHighlights',
     'jumpToMatch',
   ],
-  search: ['mode', 'caseSensitive', 'showSnippet', 'showFolder', 'limit', 'debounceMs', 'timeoutMs'],
-  windows: ['searchLayout', 'aiLayout', 'dockSide', 'dockWidth'],
+  search: ['mode', 'caseSensitive', 'showSnippet', 'showFolder', 'limit', 'debounceMs', 'timeoutMs', 'defaultSort'],
+  windows: ['searchLayout', 'readerLayout', 'aiLayout', 'dockSide', 'dockWidth'],
   mailbox: [
     'source',
     'storeScope',
@@ -258,14 +258,22 @@ function reading() {
   const font = el('input')
   font.value = draft.readerFont
   font.maxLength = 80
-  font.setAttribute('list', 'fonts')
   font.oninput = () => change('readerFont', font.value)
-  row('readerFont', '纯文本字体', font)
-  const list = el('datalist')
-  list.id = 'fonts'
-  for (const f of ['Microsoft YaHei UI', '等线', '宋体', 'Calibri', 'Segoe UI', 'Consolas'])
-    list.append(option(f, f))
-  card.append(list)
+  const fonts = ['Microsoft YaHei UI', '等线', '宋体', 'Calibri', 'Segoe UI', 'Consolas']
+  const list = el('select')
+  for (const f of fonts) list.append(option(f, f))
+  list.append(option('', '自定义字体…'))
+  list.value = fonts.includes(draft.readerFont) ? draft.readerFont : ''
+  row('fontChoice', '纯文本字体', list)
+  const custom = row('readerFont', '自定义字体名称', font)
+  custom.hidden = !!list.value
+  list.onchange = () => {
+    custom.hidden = !!list.value
+    if (list.value) {
+      font.value = list.value
+      change('readerFont', list.value)
+    } else { font.focus(); font.select() }
+  }
   number('readerSize', '纯文字号', 11, 26, 'px')
   group('信头与匹配')
   check('expandHeaders', '默认展开邮件属性', '显示邮件头、类别、会话 ID 等信息。')
@@ -279,6 +287,7 @@ function searchSettings() {
   number('debounceMs', '停止输入后查找', 100, 2000, 'ms')
   number('timeoutMs', '单字段匹配时限', 5, 500, 'ms')
   group('结果列表')
+  select('defaultSort', '默认排序', sortModes)
   check('showSnippet', '显示匹配片段')
   check('showFolder', '显示文件夹路径')
   number('limit', '每页结果数', 1, 1000, '封')
@@ -287,6 +296,7 @@ function windows() {
   group('显示方式')
   const choices = { window: '独立窗口', sidebar: '侧边栏' }
   select('searchLayout', '正则查找', choices)
+  select('readerLayout', '邮件详情', { pane: '在查找窗口右侧预览', window: '独立窗口' }, '查找停靠到侧边栏时，邮件详情始终使用独立窗口。')
   select('aiLayout', 'AI 助手', choices)
   group('侧边栏位置', '经典 Outlook 使用任务窗格。新版 Outlook 使用跟随邮件窗口的贴边侧栏。')
   select('dockSide', '停靠位置', { left: '左侧', right: '右侧' })

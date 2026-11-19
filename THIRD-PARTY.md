@@ -11,6 +11,10 @@ MailPilot 的集成代码以 GNU GPL v3 发布，完整文本见 LICENSE。
 | JavaScript 依赖 | Chatbox 使用上游 pnpm 锁。独立宿主的运行依赖锁在 chatbox/package-lock.json。发行包 licenses/npm/packages.json 列出依赖版本及对应许可文件，包含构建工具。 |
 | Office.js | 新版 Outlook 任务窗格在运行时从 Microsoft 官方 CDN 加载。[Microsoft 文档](https://learn.microsoft.com/en-us/office/dev/add-ins/develop/referencing-the-javascript-api-for-office-library-from-its-cdn) |
 | DOMPurify 3.4.18 | 阅读窗在隔离的邮件文档中显示经清理的 HTML。MPL-2.0 或 Apache-2.0，运行文件及许可证位于 Desktop/node_modules/dompurify。[上游项目](https://github.com/cure53/DOMPurify) |
+| OOXML Viewer 与 legacy-office 0.90.1 | 本地 Word、Excel、PowerPoint 排版与旧版格式读取。MIT，随包附 LICENSE 及 THIRD_PARTY_NOTICES.md。[上游项目](https://ooxml.silurus.dev/) |
+| Office Oxide WASM 0.1.8 | 为部分旧版 Office 文档提取可阅读内容。MIT 或 Apache-2.0，随包附两份许可。[项目与版本](https://www.npmjs.com/package/office-oxide-wasm/v/0.1.8) |
+| PDF.js 6.5.438 | PDF 分页渲染。Apache-2.0，随包保留 PDF.js、字体、色彩配置及解码器的许可。[上游项目](https://github.com/mozilla/pdf.js) |
+| Marked 18.2.1 | Markdown 解析，结果经 DOMPurify 清理后显示。MIT。[上游项目](https://github.com/markedjs/marked) |
 
 ## Chatbox 集成差异
 

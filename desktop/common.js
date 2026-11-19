@@ -54,6 +54,14 @@ const fields = {
   contentId: '内嵌内容 ID',
   attachmentLocation: '附件位置',
 }
+const sortModes = {
+  'date-desc': '收件日期 · 最新在前',
+  'date-asc': '收件日期 · 最早在前',
+  'sender-asc': '发件人 · 升序',
+  'sender-desc': '发件人 · 降序',
+  'subject-asc': '主题 · 升序',
+  'subject-desc': '主题 · 降序',
+}
 Object.assign(fields, {
   links: '正文链接',
   imageAlt: '图片说明',
@@ -69,6 +77,10 @@ const palettes = {
   graphite: ['石墨', '#313843', '#515e6f', '#d8dee4'],
 }
 const paths = {
+  copy: 'M8 8h12v13H8z M16 5V3H4v14h2',
+  download: 'M12 3v12m-5-5 5 5 5-5 M4 16v4h16v-4',
+  menu: 'M5 12h.1M12 12h.1M19 12h.1',
+  eye: 'M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z',
   search: 'M20 20l-5-5 M17 10.5a6.5 6.5 0 1 1-13 0 6.5 6.5 0 0 1 13 0Z',
   ai: 'm13 3 2.3 5.7L21 11l-5.7 2.3L13 19l-2.3-5.7L5 11l5.7-2.3L13 3Z M5 15l.9 2.1L8 18l-2.1.9L5 21l-.9-2.1L2 18l2.1-.9Z',
   settings:
@@ -173,9 +185,8 @@ function applyLook(cfg) {
     img.src = 'icons/' + cfg.palette + '-' + img.dataset.art + '.png'
   })
 }
-function report(e) {
+function report(e, node = $('notice')) {
   const message = (e?.message || String(e)).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
-  const node = $('notice')
   if (node) {
     node.textContent = message
     node.hidden = false

@@ -59,7 +59,7 @@ def login(client, show):
         return
     raise ValueError("登录代码已过期，请重试。")
 
-def sync(db, cfg, progress, cancel):
+def graph_connection(cfg, cancel=lambda: False):
     import win32crypt
     info = json.loads(account_file().read_text(encoding="utf-8"))
     def refresh():
@@ -72,7 +72,7 @@ def sync(db, cfg, progress, cancel):
             info.update(json.loads(account_file().read_text(encoding="utf-8")))
         return token["access_token"]
     access = refresh()
-    def get(url):
+    def get(url, destination=None):
         nonlocal access
         if urllib.parse.urlsplit(url).netloc != "graph.microsoft.com" or not url.startswith("https://"):
             raise ValueError("无效的 Microsoft Graph 分页地址。")
@@ -80,8 +80,19 @@ def sync(db, cfg, progress, cancel):
             if cancel():
                 raise InterruptedError("索引已暂停，可再次刷新。")
             try:
-                return request(url, headers={"Authorization":"Bearer "+access,
-                    "Prefer":'IdType="ImmutableId", outlook.body-content-type="html", odata.maxpagesize='+str(cfg["batchSize"])})
+                headers = {"Authorization":"Bearer "+access,
+                    "Prefer":'IdType="ImmutableId", outlook.body-content-type="html", odata.maxpagesize='+str(cfg["batchSize"])}
+                if destination is None:
+                    return request(url, headers=headers)
+                with urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=45) as response, destination.open("wb") as out:
+                    while chunk := response.read(256 * 1024):
+                        if cancel():
+                            raise InterruptedError("下载已取消。")
+                        out.write(chunk)
+                    length = response.headers.get("Content-Length")
+                    if length is not None and out.tell() != int(length):
+                        raise IOError("附件下载中断，请重试。")
+                return
             except urllib.error.HTTPError as e:
                 if e.code == 401 and attempt == 0:
                     access = refresh()
@@ -89,7 +100,56 @@ def sync(db, cfg, progress, cancel):
                     time.sleep(min(30,int(e.headers.get("Retry-After",2))))
                 else:
                     raise
-    return sync_pages(db, cfg, progress, get, info["account"])
+    return get, info["account"]
+
+def sync(db, cfg, progress, cancel):
+    get, account = graph_connection(cfg, cancel)
+    return sync_pages(db, cfg, progress, get, account)
+
+def list_attachments(murl, get):
+    url = murl + "/attachments?$select=id,name,contentType,size,isInline"
+    attachments = []
+    while url:
+        page = get(url)
+        attachments.extend(page["value"])
+        url = page.get("@odata.nextLink")
+    return attachments
+
+def attachment_reader(cfg, row, cancel=lambda: False):
+    get, account = graph_connection(cfg, cancel)
+    if account != row["store"]:
+        raise ValueError("邮箱已切换，请重新查找。")
+    murl = API + "/me/messages/" + urllib.parse.quote(row["entry"], safe="")
+    legacy = None
+    def fetch(index, file, destination):
+        nonlocal legacy
+        identity, kind = file.get("graphId"), file.get("kind")
+        if not identity:
+            if legacy is None:
+                if row["stamp"] and get(murl + "?$select=changeKey")["changeKey"] != row["stamp"]:
+                    raise ValueError("原邮件已更改，请刷新索引后重试。")
+                legacy = list_attachments(murl, get)
+            matches = [a for a in legacy if a.get("name") == file["name"] and
+                       (file.get("size") is None or a.get("size") == file["size"])]
+            if len(matches) == 1:
+                current = matches[0]
+            elif row["stamp"] and index < len(legacy) and legacy[index] in matches:
+                current = legacy[index]
+            else:
+                raise ValueError("无法辨认原附件，请在 Outlook 原件中查看。")
+            identity, kind = current["id"], current.get("@odata.type")
+        if kind == "#microsoft.graph.referenceAttachment":
+            raise ValueError("这是云端链接附件，请在 Outlook 原件中打开。")
+        url = murl + "/attachments/" + urllib.parse.quote(identity, safe="") + "/$value"
+        try:
+            get(url, destination)
+        except urllib.error.HTTPError as e:
+            if e.code == 405:
+                raise ValueError("这是云端链接附件，请在 Outlook 原件中打开。") from None
+            if e.code == 404:
+                raise ValueError("原附件已移动或删除，请刷新索引。") from None
+            raise
+    return fetch
 
 def graph_person(value):
     entry = (value or {}).get("emailAddress") or {}
@@ -129,7 +189,8 @@ def message_record(m, attachments, murl, get):
         cid, loc = (a.get("contentId") or "").strip("<> "), a.get("contentLocation") or ""
         if (cid or loc) and a.get("contentBytes"):
             images[cid or loc] = "data:"+a["contentType"]+";base64,"+a["contentBytes"]
-        files.append(dict(name=a.get("name") or "", type=a.get("contentType") or "", size=a.get("size"), cid=cid, location=loc))
+        files.append(dict(name=a.get("name") or "", type=a.get("contentType") or "", size=a.get("size"),
+                          cid=cid, location=loc, graphId=a.get("id"), kind=a.get("@odata.type")))
     fields = {k:v for k,v in fields.items() if v}
     fields["files"] = files
     body = m.get("body") or {}
@@ -197,7 +258,7 @@ def sync_pages(db, cfg, progress, get, account):
                             "parentFolderId,categories,importance,isRead,isDraft,isReadReceiptRequested,isDeliveryReceiptRequested,"
                             "internetMessageHeaders,internetMessageId,conversationId,conversationIndex,inferenceClassification,flag"
                             "&$expand=singleValueExtendedProperties($filter=id%20eq%20'Integer%200x36'%20or%20id%20eq%20'Integer%200xE08')")
-                    first_attachments = get(murl+"/attachments?$select=id,name,contentType,size,isInline")
+                    attachments = list_attachments(murl, get)
                 except urllib.error.HTTPError as e:
                     if e.code != 404:
                         raise
@@ -205,12 +266,6 @@ def sync_pages(db, cfg, progress, get, account):
                     continue
                 if m.get("parentFolderId",fid) != fid:
                     continue
-                attachments = list(first_attachments["value"])
-                more = first_attachments.get("@odata.nextLink")
-                while more:
-                    p = get(more)
-                    attachments.extend(p["value"])
-                    more = p.get("@odata.nextLink")
                 updates.append(message_record(m, attachments, murl, get) | dict(store=account,entry=entry,folder=path,folder_id=fid))
             with db:
                 for args in deletions:

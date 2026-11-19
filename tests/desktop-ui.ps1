@@ -1,4 +1,4 @@
-param([switch]$Assistant,[ValidateSet('classic','graph')][string]$Source='classic',[string]$Bundle)
+param([switch]$Assistant,[switch]$Legacy,[ValidateSet('classic','graph')][string]$Source='classic',[string]$Bundle)
 $ErrorActionPreference='Stop'
 $root=Split-Path $PSScriptRoot
 if(!$Bundle){$Bundle=Join-Path $root 'dist/MailPilot'}
@@ -14,6 +14,17 @@ if($Source -eq 'graph'){
   [IO.File]::WriteAllText((Join-Path $qa 'graph-account.json'),(@{account='test';clientId=$config.clientId}|ConvertTo-Json))
 }
 [IO.File]::WriteAllText((Join-Path $qa 'settings.json'),($config|ConvertTo-Json))
+if($Legacy){
+  $originals=Join-Path $qa 'originals'
+  & (Join-Path $Bundle 'Runtime/python.exe') -B (Join-Path $PSScriptRoot 'preview_fixtures.py') $originals
+  if($LASTEXITCODE){throw 'Office fixtures failed'}
+  $fixtureOffice=Join-Path $env:ProgramFiles 'LibreOffice/program/soffice.com'
+  $profileUri=([uri](Join-Path $qa 'converter')).AbsoluteUri
+  foreach($pair in @(@('交付说明.docx','doc:MS Word 97'),@('报价单.xlsx','xls:MS Excel 97'),@('进度汇报.pptx','ppt:MS PowerPoint 97'))){
+    & $fixtureOffice "-env:UserInstallation=$profileUri" --headless --convert-to $pair[1] --outdir $originals (Join-Path $originals $pair[0])
+    if(!(Test-Path (Join-Path $originals ([IO.Path]::ChangeExtension($pair[0],$pair[1].Split(':')[0]))))){throw 'Legacy fixture conversion failed'}
+  }
+}
 & (Join-Path $Bundle 'Runtime\python.exe') -B (Join-Path $PSScriptRoot 'desktop-fixture.py')
 if($LASTEXITCODE){throw 'Fixture creation failed'}
 $harness=Join-Path $qa 'harness'
@@ -21,7 +32,7 @@ New-Item -ItemType Directory -Path $harness | Out-Null
 [IO.File]::WriteAllText((Join-Path $harness 'package.json'),'{"name":"mailpilot-test","main":"index.cjs","version":"1.20.3"}')
 [IO.File]::WriteAllText((Join-Path $harness 'index.cjs'),"require('../../../tests/desktop-ui.cjs')")
 $p=Start-Process -FilePath (Join-Path $Bundle 'Browser\electron.exe') -ArgumentList ('"'+$harness+'"') -PassThru -WindowStyle Hidden
-if(!$p.WaitForExit(90000)){$p.Kill();throw "UI test timed out in $qa"}
+if(!$p.WaitForExit(150000)){$p.Kill();throw "UI test timed out in $qa"}
 Get-Content -LiteralPath (Join-Path $qa 'result.txt')
 if($p.ExitCode){throw "UI test failed in $qa"}
 "Verified $qa"

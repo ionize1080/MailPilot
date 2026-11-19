@@ -6,13 +6,14 @@ using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyFileVersion("0.2.1.0")]
+[assembly: AssemblyFileVersion("0.3.0.0")]
 namespace MailPilot {
     internal static class App {
         public static readonly string Root=Path.GetDirectoryName(typeof(App).Assembly.Location);
         public static Button Button(string text, EventHandler click) {
             var b=new Button(){Text=text,AutoSize=true,Height=32,MinimumSize=new Size(68,30),Margin=new Padding(3)};
-            b.Click+=click;return b;
+            b.FlatStyle=FlatStyle.Flat; b.BackColor=SystemColors.Window; b.FlatAppearance.BorderColor=SystemColors.ControlDark;
+            b.Padding=new Padding(4,1,4,1); b.Click+=click;return b;
         }
         public static void Error(Exception e){MessageBox.Show(e.GetBaseException().Message,"MailPilot",MessageBoxButtons.OK,MessageBoxIcon.Warning);}
         public static void Launch(string action) {
@@ -52,7 +53,8 @@ namespace MailPilot {
     }
     internal sealed class Manager : Form {
         readonly Label status=new Label(){Dock=DockStyle.Fill,AutoEllipsis=true};
-        readonly ComboBox scope=new ComboBox(){DropDownStyle=ComboBoxStyle.DropDownList,Width=210};
+        readonly ComboBox scope=new ComboBox(){DropDownStyle=ComboBoxStyle.DropDownList,Width=216,
+            FlatStyle=FlatStyle.Flat,DrawMode=DrawMode.OwnerDrawFixed,ItemHeight=25,AccessibleName="部署范围"};
         readonly Label hint=new Label(){Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft};
         RegistryHive Scope { get { return scope.SelectedIndex==1 ? RegistryHive.LocalMachine : RegistryHive.CurrentUser; } }
         public Manager() {
@@ -67,6 +69,17 @@ namespace MailPilot {
             var selector=new FlowLayoutPanel(){AutoSize=true,Dock=DockStyle.Fill};
             selector.Controls.Add(new Label(){Text="部署范围",AutoSize=true,Margin=new Padding(3,7,6,3)});
             scope.Items.AddRange(new[]{"当前用户","整台电脑（需管理员权限）"});
+            scope.DrawItem+=(s,e)=>{
+                if(e.Index<0)return;
+                bool selected=(e.State&DrawItemState.Selected)!=0;
+                var bg=selected ? (SystemInformation.HighContrast ? SystemColors.Highlight : Color.FromArgb(223,240,232)) : SystemColors.Window;
+                var fg=selected && SystemInformation.HighContrast ? SystemColors.HighlightText : SystemColors.WindowText;
+                using(var brush=new SolidBrush(bg))e.Graphics.FillRectangle(brush,e.Bounds);
+                var bounds=Rectangle.Inflate(e.Bounds,-7,0);
+                TextRenderer.DrawText(e.Graphics,scope.Items[e.Index].ToString(),e.Font,bounds,fg,
+                    TextFormatFlags.Left|TextFormatFlags.VerticalCenter|TextFormatFlags.EndEllipsis);
+                e.DrawFocusRectangle();
+            };
             scope.SelectedIndex=Deployment.PreferredScope()==RegistryHive.LocalMachine ? 1 : 0;
             scope.SelectedIndexChanged+=(s,e)=>RefreshStatus();
             selector.Controls.Add(scope);layout.Controls.Add(selector,0,1);

@@ -4,10 +4,34 @@ import json
 import os
 import time
 import ctypes
+import pythoncom
+import pywintypes
 import win32com.client
+import win32api
+import win32gui
+import win32process
+
+def process_name(pid):
+    try:
+        process = win32api.OpenProcess(0x1000, False, pid)
+        name = ctypes.create_unicode_buffer(32768)
+        size = ctypes.c_ulong(len(name))
+        ctypes.windll.kernel32.QueryFullProcessImageNameW(ctypes.c_void_p(int(process)), 0, name, ctypes.byref(size))
+        return os.path.basename(name.value).lower()
+    except (OSError, pywintypes.error):
+        return ""
+
+def current_outlook():
+    try:
+        return win32com.client.GetActiveObject("Outlook.Application")
+    except pythoncom.com_error as error:
+        # A COM-started Explorer can be visible before Office lists it in the Running Object Table.
+        hwnd = win32gui.FindWindow("rctrl_renwnd32", None)
+        if error.hresult != -2147221021 or not hwnd or process_name(win32process.GetWindowThreadProcessId(hwnd)[1]) != "outlook.exe":
+            raise
+        return win32com.client.dynamic.Dispatch("Outlook.Application")
 
 def follow(source):
-    import win32gui, win32process, win32api
     ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
     target = "olk.exe" if source == "graph" else "outlook.exe"
     pid_names = {}
@@ -19,14 +43,7 @@ def follow(source):
                 return
             pid = win32process.GetWindowThreadProcessId(h)[1]
             if pid not in pid_names:
-                try:
-                    process = win32api.OpenProcess(0x1000, False, pid)
-                    name = ctypes.create_unicode_buffer(32768)
-                    size = ctypes.c_ulong(len(name))
-                    ctypes.windll.kernel32.QueryFullProcessImageNameW(ctypes.c_void_p(int(process)),0,name,ctypes.byref(size))
-                    pid_names[pid] = os.path.basename(name.value).lower()
-                except Exception:
-                    pid_names[pid] = ""
+                pid_names[pid] = process_name(pid)
             if pid_names[pid] == target:
                 windows.append(h)
         win32gui.EnumWindows(collect, None)
@@ -49,7 +66,7 @@ def main():
     if tool not in ("search", "ai") or action not in ("attach", "detach", "hide", "icons"):
         return 2
     try:
-        outlook = win32com.client.GetActiveObject("Outlook.Application")
+        outlook = current_outlook()
         addin = outlook.COMAddIns.Item("MailPilot.Outlook")
         if not addin.Connect:
             return 1

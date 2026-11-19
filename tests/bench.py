@@ -11,7 +11,7 @@ from ctypes import wintypes
 
 from config import DEFAULTS
 from indexdb import connect,save
-from search import search
+from search import SORTS, search
 
 def peak_mib():
     class Counters(ctypes.Structure):
@@ -25,6 +25,18 @@ def peak_mib():
     if not get(ctypes.windll.kernel32.GetCurrentProcess(),ctypes.byref(c),c.cb):
         raise ctypes.WinError()
     return round(c.peak/1048576,1)
+
+def sort_times(db):
+    timings = {}
+    for mode in SORTS:
+        args = dict(pattern=".",mode="subject",limit=100,sort=mode)
+        samples = []
+        for _ in range(15):
+            page = search(db,args,DEFAULTS)
+            assert not page["partial"] and len(page["items"])==100 and page["next"]
+            samples.append(page["ms"])
+        timings[mode] = dict(medianMs=statistics.median(samples),p95Ms=max(samples))
+    return timings
 
 def main():
     ap=argparse.ArgumentParser()
@@ -66,6 +78,7 @@ def main():
             checked=cold["candidatesChecked"],firstMs=cold["ms"],medianMs=statistics.median(values),
             p95Ms=sorted(values)[14],scanMs=brute["ms"]))
     print(json.dumps(dict(records=arg.count,bodyMiB=round(originals/1048576,1),buildSeconds=built,
-        databaseMiB=round(arg.db.stat().st_size/1048576,1),peakWorkingSetMiB=peak_mib(),cases=cases_out),ensure_ascii=True,indent=2))
+        databaseMiB=round(arg.db.stat().st_size/1048576,1),peakWorkingSetMiB=peak_mib(),cases=cases_out,
+        first100Sorts=sort_times(db) if arg.count>100 else {}),ensure_ascii=True,indent=2))
 if __name__=="__main__":
     main()

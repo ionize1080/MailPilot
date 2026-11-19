@@ -33,6 +33,11 @@ class WindowLayout {
     const handle = win.getNativeWindowHandle()
     this.handle = (handle.length === 8 ? handle.readBigUInt64LE() : handle.readUInt32LE()).toString()
     this.minimum = win.getMinimumSize()
+    const keepInPane = (event) => {
+      if (this.mode === 'outlook') event.preventDefault()
+    }
+    win.on('will-move', keepInPane)
+    win.on('will-resize', keepInPane)
     win.hookWindowMessage(0x802a, () => {
       if (this.mode === 'outlook' && this.config) {
         this.mode = 'edge' // The native host already released its ownership.
@@ -86,11 +91,14 @@ class WindowLayout {
         win.setMinimumSize(260, 120)
       }
       this.stopTracking()
+      // The Outlook task pane drives our HWND size. A fixed Electron window clamps
+      // external SetWindowPos calls to the last floating dimensions on Windows.
+      if (this.source === 'classic' && !win.isResizable()) win.setResizable(true)
       const attached =
         this.source === 'classic' && (await pane('attach', this.kind, this.handle, side, width))
       if (win.isDestroyed()) return
       this.mode = attached ? 'outlook' : 'edge'
-      win.setResizable(false)
+      if (!attached) win.setResizable(false)
       win.setSkipTaskbar(attached)
       if (!attached) {
         this.area = screen.getDisplayMatching(win.getBounds()).workArea

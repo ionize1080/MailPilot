@@ -1,4 +1,5 @@
 import ctypes
+from contextlib import contextmanager
 import datetime
 import base64
 import mimetypes
@@ -134,6 +135,27 @@ def read_item(ns, store, entry, folder, folder_id, stamp):
 def namespace():
     import win32com.client.dynamic
     return win32com.client.dynamic.Dispatch("Outlook.Application").GetNamespace("MAPI")
+
+@contextmanager
+def attachment_reader(row, metadata):
+    ctypes.OleDLL("ole32").CoInitializeEx(None, 2)
+    try:
+        item = namespace().GetItemFromID(row["entry"], row["store"])
+        modified = metadata.get("modified")
+        if modified and utc(item.LastModificationTime) != modified[0]:
+            raise ValueError("原邮件已更改，请刷新索引后重试。")
+        attachments = item.Attachments
+        def fetch(index, file, destination):
+            attachment = attachments.Item(index + 1)
+            name = repair_surrogates(str(attachment.FileName or optional(lambda: attachment.DisplayName)))
+            if name != file["name"] or (file.get("size") and attachment.Size != file["size"]):
+                raise ValueError("原附件已更改，请刷新索引后重试。")
+            attachment.SaveAsFile(str(destination))
+        yield fetch
+    except pythoncom.com_error as error:
+        raise ValueError("Outlook 无法读取原附件，请确认邮箱或 PST 仍已打开。") from error
+    finally:
+        ctypes.windll.ole32.CoUninitialize()
 
 def sync(db, cfg, progress, cancel, selected_stores=None):
     import pythoncom
