@@ -18,6 +18,26 @@ const input = $('pattern'),
   caseButton = $('case')
 const dock = button('收纳为侧边栏', 'dock', () => api.window('dock'), 'dock-button')
 const splitter = $('splitter')
+const HISTORY_KEY = 'mailpilot.patterns'
+function history() {
+  try {
+    const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
+    return Array.isArray(list) ? list.filter((x) => typeof x === 'string').slice(0, 20) : []
+  } catch {
+    return []
+  }
+}
+function remember(pattern) {
+  if (!pattern.trim()) return
+  const list = [pattern, ...history().filter((x) => x !== pattern)].slice(0, 20)
+  try {
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(list))
+  } catch {}
+  showHistory()
+}
+function showHistory() {
+  $('history').replaceChildren(...history().map((p) => option(p, '')))
+}
 function listWidth(pixels) {
   const area = document.querySelector('.app-body').clientWidth - $('rail').offsetWidth
   const width = Math.max(280, Math.min(area - 310, pixels))
@@ -207,6 +227,7 @@ async function run(more, keepSelection = false) {
     request = args()
   if (!more) clear(keepSelection)
   $('timing').textContent = '正在查找…'
+  $('results').setAttribute('aria-busy', 'true')
   $('more').disabled = true
   try {
     const result = await api.mail('search_mail', { ...request, cursor: more ? cursor : null })
@@ -218,6 +239,7 @@ async function run(more, keepSelection = false) {
       selection = null
     }
     cursor = result.next
+    if (!more && result.items.length) remember(request.pattern)
     render(more ? result.items : null)
     $('timing').textContent = result.ms + ' ms'
     if (result.partial) report(result.partial)
@@ -228,7 +250,10 @@ async function run(more, keepSelection = false) {
       report(e)
     }
   } finally {
-    if (ticket === generation) $('more').disabled = false
+    if (ticket === generation) {
+      $('more').disabled = false
+      $('results').removeAttribute('aria-busy')
+    }
   }
 }
 async function folders() {
@@ -318,11 +343,32 @@ async function init() {
     schedule()
   }
   $('more').onclick = () => run(true)
+  showHistory()
+  new IntersectionObserver(
+    (entries) => {
+      if (entries.some((e) => e.isIntersecting) && cursor && !$('more').disabled && !$('more').hidden) run(true)
+    },
+    { root: document.querySelector('.workarea'), rootMargin: '0px 0px 240px 0px' }
+  ).observe($('more'))
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && input.value) {
+      e.preventDefault()
+      input.value = ''
+      schedule()
+    }
+  })
   $('results').onkeydown = (e) => {
     const row = e.target.closest('.result-row')
-    if (!row || !['ArrowDown', 'ArrowUp'].includes(e.key)) return
+    if (!row || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
     e.preventDefault()
-    const next = e.key === 'ArrowDown' ? row.nextElementSibling : row.previousElementSibling
+    const next =
+      e.key === 'Home'
+        ? $('results').firstElementChild
+        : e.key === 'End'
+          ? $('results').lastElementChild
+          : e.key === 'ArrowDown'
+            ? row.nextElementSibling
+            : row.previousElementSibling
     if (next) {
       next.focus()
       if (!$('reading-pane').hidden) next.click()
@@ -375,6 +421,11 @@ async function init() {
     else if (searched) render()
   })
   document.addEventListener('keydown', (e) => {
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
+      e.preventDefault()
+      input.focus()
+      input.select()
+    }
     if ((e.ctrlKey && e.key === 'f') || ((e.ctrlKey || e.metaKey) && e.key === 'l')) {
       e.preventDefault()
       input.focus()

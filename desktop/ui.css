@@ -321,6 +321,7 @@ svg {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
   flex: 1;
 }
 .workarea,
@@ -330,6 +331,7 @@ svg {
   scrollbar-gutter: stable;
   min-height: 0;
   flex: 1;
+  overscroll-behavior: contain;
 }
 #rail {
   display: flex;
@@ -1388,3 +1390,15 @@ mark {
   .preview-tools .btn { padding: 5px 7px; }
   .preview-dialog { width: 100vw; height: 100dvh; border-radius: 0; }
 }
+
+/* Sidebar (docked) mode: reclaim vertical space and keep the query reachable. */
+body[data-layout='outlook'] .page-heading,
+body[data-layout='edge'] .page-heading { display: none; }
+body[data-layout='outlook'] .workarea,
+body[data-layout='edge'] .workarea { padding-top: 0; }
+body[data-layout='outlook'] .query-card,
+body[data-layout='edge'] .query-card { position: sticky; top: 0; z-index: 2; margin-top: 10px; }
+body[data-layout='outlook'] .results-head,
+body[data-layout='edge'] .results-head { margin-top: 14px; }
+#results[aria-busy='true'] { opacity: .55; transition: opacity .12s; }
+.more-sentinel { height: 1px; }
