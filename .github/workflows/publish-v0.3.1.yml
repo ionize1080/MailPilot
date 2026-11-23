@@ -1,0 +1,75 @@
+name: Publish verified MailPilot 0.3.1
+on:
+  push:
+    branches: [build/publish-v0.3.1]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Recover the two previously published, hash-pinned inputs
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v0.3.0 --repo "$env:GITHUB_REPOSITORY" --dir .build/delivery --pattern MailPilot-0.3.0-portable-win-x64.zip --pattern Chatbox-1.20.3-MailPilot-source.zip
+      - name: Recreate and hash-check the tested local ZIP
+        run: python .release/restore.py
+      - name: Test the extracted release
+        shell: pwsh
+        run: |
+          $bundle = (Resolve-Path .build/portable-test/MailPilot).Path
+          & (Join-Path $bundle 'Runtime/python.exe') -B tests/regression.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          ./tests/desktop-ui.ps1 -Bundle $bundle -Source graph
+          ./tests/desktop-ui.ps1 -Bundle $bundle -Source graph -Assistant
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-release
+          path: .build/verified/
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-release
+      - name: Publish the tested assets against the verified main commit
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: 92fc13a65a204be09967e108b8e70a77f8377ed1
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$(gh api "repos/$GH_REPO/git/ref/heads/main" --jq .object.sha)" = "$RELEASE_SHA"
+          echo 'e9497cc75a0ccd89692407cb9b156b5147ce89721a5b27295c4040573439fcbe  SHA256SUMS.txt' | sha256sum -c -
+          sha256sum -c SHA256SUMS.txt
+          gh release create v0.3.1 --target "$RELEASE_SHA" --draft --notes-file notes.md --title 'MailPilot 0.3.1 · 侧边栏滚动与搜索翻页' MailPilot-0.3.1-portable-win-x64.zip Chatbox-1.20.3-MailPilot-source.zip SHA256SUMS.txt
+          release_id=$(gh release view v0.3.1 --json databaseId --jq .databaseId)
+          gh api "repos/$GH_REPO/releases/$release_id/assets" > assets.json
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          names = ("MailPilot-0.3.1-portable-win-x64.zip","Chatbox-1.20.3-MailPilot-source.zip","SHA256SUMS.txt")
+          assets = {a["name"]:a for a in json.loads(Path("assets.json").read_text())}
+          assert set(assets) == set(names)
+          for name in names:
+              with open(name,"rb") as f:
+                  digest = hashlib.file_digest(f,"sha256").hexdigest()
+              assert assets[name]["state"]=="uploaded" and assets[name]["digest"]=="sha256:"+digest, name
+          PY
+          gh release edit v0.3.1 --draft=false --latest
+          test "$(gh api "repos/$GH_REPO/releases/latest" --jq .tag_name)" = v0.3.1
