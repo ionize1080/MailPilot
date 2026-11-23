@@ -129,7 +129,7 @@ async function desktop() {
   childProcess.spawn = spawnOriginal
   childProcess.execFile = execOriginal
   const search = await page('search')
-  await see(search, "document.querySelector('#status').textContent.includes('3 封')")
+  await see(search, "document.querySelector('#status').textContent.includes('68 封')")
   assert.equal(
     await evalIn(search, "getComputedStyle(document.querySelector('#mode')).appearance"),
     'base-select'
@@ -250,6 +250,7 @@ async function desktop() {
   await evalIn(sidebarReader, "document.querySelector('[aria-label=关闭]').click()")
   paneStep('Capturing the sidebar')
   await capture(search, 'sidebar')
+  await verifySidebar(search)
   paneStep('Restoring the floating search')
   await evalIn(search, "document.querySelector('.dock-button').click()")
   await see(
@@ -275,6 +276,71 @@ async function desktop() {
   assert.equal(await evalIn(search, "document.querySelector('#reading-pane').dataset.state"), 'empty')
   assert.equal(await evalIn(search, "document.querySelector('#pattern').value"), '尾码-9823')
   assert.match(audit(), /PASS/)
+}
+async function verifySidebar(win) {
+  const Worker = require(path.join(bundle, 'Desktop/worker.cjs'))
+  const call = Worker.prototype.call
+  const pattern = 'Sidebar QA'
+  const cursors = []
+  let resume, started, settled
+  const gate = new Promise((r) => { resume = r })
+  const pending = new Promise((r) => { started = r })
+  const finished = new Promise((r) => { settled = r })
+  Worker.prototype.call = async function (name, args, ...rest) {
+    if (name === 'search_mail' && args.pattern === pattern && args.cursor) {
+      cursors.push(JSON.stringify(args.cursor))
+      if (cursors.length === 1) throw Error('QA page interrupted')
+    }
+    const result = await call.call(this, name, args, ...rest)
+    if (name === 'search_mail' && args.pattern === 'Sidebar QA 00') {
+      started()
+      await gate
+      settled()
+    }
+    return result
+  }
+  const run = (js) => evalIn(win, js)
+  const press = (key) => run(`document.activeElement.dispatchEvent(new KeyboardEvent('keydown',
+    {key:${JSON.stringify(key)}, bubbles:true, cancelable:true}))`)
+  const bottom = () => run("document.querySelector('.workarea').scrollTop=document.querySelector('.workarea').scrollHeight")
+  try {
+    await find(win, 'subject', pattern)
+    await see(win, "$('count').textContent==='20+' && document.querySelector('.workarea').scrollHeight > document.querySelector('.workarea').clientHeight")
+    await bottom()
+    await see(win, "$('more').textContent==='重试加载更多' && !$('more').disabled")
+    assert.equal(await run("document.querySelectorAll('.result-row').length"), 20)
+    assert(await run("document.querySelector('.workarea').scrollTop>0 && Math.abs(document.querySelector('.query-card').getBoundingClientRect().top - document.querySelector('.workarea').getBoundingClientRect().top)<2"))
+    await run("$('more').click()")
+    await see(win, "$('count').textContent==='40+' && $('notice').hidden")
+    assert.equal(cursors[0], cursors[1])
+    await bottom()
+    await see(win, "$('count').textContent==='60+'")
+    await bottom()
+    await see(win, "$('count').textContent==='65' && $('more').hidden")
+    assert.equal(await run("new Set([...document.querySelectorAll('.result-row')].map(n=>n.dataset.key)).size"), 65)
+    await run("$('results').firstElementChild.focus()")
+    await press('End')
+    assert(await run("document.activeElement===$('results').lastElementChild"))
+    await press('Home')
+    assert(await run("document.activeElement===$('results').firstElementChild"))
+    await press('/')
+    assert(await run("document.activeElement===$('pattern') && [...$('history').options].filter(o=>o.value==='Sidebar QA').length===1"))
+    await run("$('pattern').dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',isComposing:true,bubbles:true}))")
+    assert.equal(await run("$('pattern').value"), pattern)
+    await find(win, 'subject', 'Sidebar QA 00')
+    await pending
+    await see(win, "$('results').getAttribute('aria-busy')==='true'")
+    await press('Escape')
+    assert(await run("!$('pattern').value && !$('results').hasAttribute('aria-busy') && !$('more').disabled"))
+    resume()
+    await finished
+    await find(win, 'full', '尾码-9823')
+    await see(win, "$('count').textContent==='1' && document.querySelector('.snippet mark')?.textContent==='尾码-9823'")
+    assert(!await run("[...$('history').options].some(o=>o.value==='Sidebar QA 00')"))
+  } finally {
+    resume()
+    Worker.prototype.call = call
+  }
 }
 async function verifyAttachments(win) {
   const downloads = path.join(home, 'downloads')

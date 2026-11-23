@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from runtime import ROOT,OUT
 
-VERSION="0.3.0"
+VERSION=json.loads((ROOT/"desktop/package.json").read_text(encoding="utf-8"))["version"]
 
 def stage_desktop():
     src, dest = ROOT/"desktop", OUT/"Desktop"

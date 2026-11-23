@@ -15,11 +15,19 @@ let cfg,
 const input = $('pattern'),
   scope = $('mode'),
   folder = $('folder'),
-  caseButton = $('case')
+  caseButton = $('case'),
+  moreButton = $('more'),
+  workarea = document.querySelector('.workarea')
+const pageObserver = new IntersectionObserver(
+  (entries) => {
+    if (entries.at(-1)?.isIntersecting && cursor && !moreButton.disabled) run(true)
+  },
+  { root: workarea, rootMargin: '0px 0px 240px 0px' }
+)
 const dock = button('收纳为侧边栏', 'dock', () => api.window('dock'), 'dock-button')
 const splitter = $('splitter')
 const HISTORY_KEY = 'mailpilot.patterns'
-function history() {
+function recentPatterns() {
   try {
     const list = JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')
     return Array.isArray(list) ? list.filter((x) => typeof x === 'string').slice(0, 20) : []
@@ -29,14 +37,14 @@ function history() {
 }
 function remember(pattern) {
   if (!pattern.trim()) return
-  const list = [pattern, ...history().filter((x) => x !== pattern)].slice(0, 20)
+  const list = [pattern, ...recentPatterns().filter((x) => x !== pattern)].slice(0, 20)
   try {
     localStorage.setItem(HISTORY_KEY, JSON.stringify(list))
   } catch {}
   showHistory()
 }
 function showHistory() {
-  $('history').replaceChildren(...history().map((p) => option(p, '')))
+  $('history').replaceChildren(...recentPatterns().map((p) => option(p, p)))
 }
 function listWidth(pixels) {
   const area = document.querySelector('.app-body').clientWidth - $('rail').offsetWidth
@@ -119,7 +127,14 @@ function empty(title, caption, examples) {
   }
   $('results').replaceChildren(node)
 }
+function setSearching(pending) {
+  moreButton.disabled = pending
+  if (pending) $('results').setAttribute('aria-busy', 'true')
+  else $('results').removeAttribute('aria-busy')
+}
 function clear(keepSelection = false) {
+  pageObserver.disconnect()
+  setSearching(false)
   if (!keepSelection && selection) {
     reader.clear()
     selection = null
@@ -127,11 +142,13 @@ function clear(keepSelection = false) {
   hits = []
   cursor = null
   searched = null
-  $('more').hidden = true
+  moreButton.hidden = true
+  moreButton.textContent = '加载更多'
   $('count').hidden = true
   $('timing').textContent = ''
   $('notice').hidden = true
   $('results').replaceChildren()
+  workarea.scrollTop = 0
   if (!input.value) empty('从一个表达式开始', '直接输入正则，或选择一个示例。', true)
 }
 function resultRow(hit) {
@@ -198,7 +215,7 @@ function render(append) {
   else $('results').replaceChildren(...hits.map(resultRow))
   $('count').hidden = false
   $('count').textContent = hits.length + (cursor ? '+' : '')
-  $('more').hidden = !cursor
+  moreButton.hidden = !cursor
   if (!hits.length)
     empty(
       '没有匹配的邮件',
@@ -218,17 +235,19 @@ function schedule() {
   }
 }
 async function run(more, keepSelection = false) {
+  if (more && (!cursor || moreButton.disabled)) return
   clearTimeout(tick)
+  const ticket = ++generation
   if (!input.value) {
     clear()
     return
   }
-  const ticket = ++generation,
-    request = args()
+  const request = args()
   if (!more) clear(keepSelection)
+  else pageObserver.disconnect()
+  $('notice').hidden = true
   $('timing').textContent = '正在查找…'
-  $('results').setAttribute('aria-busy', 'true')
-  $('more').disabled = true
+  setSearching(true)
   try {
     const result = await api.mail('search_mail', { ...request, cursor: more ? cursor : null })
     if (ticket !== generation) return
@@ -241,19 +260,19 @@ async function run(more, keepSelection = false) {
     cursor = result.next
     if (!more && result.items.length) remember(request.pattern)
     render(more ? result.items : null)
+    moreButton.textContent = '加载更多'
+    if (cursor) pageObserver.observe(moreButton)
     $('timing').textContent = result.ms + ' ms'
     if (result.partial) report(result.partial)
   } catch (e) {
     if (ticket === generation) {
-      clear()
-      $('timing').textContent = '查找未完成'
+      if (more) moreButton.textContent = '重试加载更多'
+      else clear()
+      $('timing').textContent = more ? '下一页加载失败' : '查找未完成'
       report(e)
     }
   } finally {
-    if (ticket === generation) {
-      $('more').disabled = false
-      $('results').removeAttribute('aria-busy')
-    }
+    if (ticket === generation) setSearching(false)
   }
 }
 async function folders() {
@@ -342,16 +361,13 @@ async function init() {
     setCase(caseButton.getAttribute('aria-pressed') !== 'true')
     schedule()
   }
-  $('more').onclick = () => run(true)
+  moreButton.onclick = () => run(true)
   showHistory()
-  new IntersectionObserver(
-    (entries) => {
-      if (entries.some((e) => e.isIntersecting) && cursor && !$('more').disabled && !$('more').hidden) run(true)
-    },
-    { root: document.querySelector('.workarea'), rootMargin: '0px 0px 240px 0px' }
-  ).observe($('more'))
+  new ResizeObserver(([entry]) => {
+    workarea.style.setProperty('--query-height', entry.borderBoxSize[0].blockSize + 'px')
+  }).observe(document.querySelector('.query-card'))
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && input.value) {
+    if (e.key === 'Escape' && !e.isComposing && input.value) {
       e.preventDefault()
       input.value = ''
       schedule()
@@ -361,14 +377,12 @@ async function init() {
     const row = e.target.closest('.result-row')
     if (!row || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return
     e.preventDefault()
-    const next =
-      e.key === 'Home'
-        ? $('results').firstElementChild
-        : e.key === 'End'
-          ? $('results').lastElementChild
-          : e.key === 'ArrowDown'
-            ? row.nextElementSibling
-            : row.previousElementSibling
+    const next = {
+      Home: $('results').firstElementChild,
+      End: $('results').lastElementChild,
+      ArrowDown: row.nextElementSibling,
+      ArrowUp: row.previousElementSibling,
+    }[e.key]
     if (next) {
       next.focus()
       if (!$('reading-pane').hidden) next.click()
@@ -421,7 +435,9 @@ async function init() {
     else if (searched) render()
   })
   document.addEventListener('keydown', (e) => {
-    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName)) {
+    if (e.defaultPrevented || e.isComposing || document.querySelector('dialog[open]')) return
+    if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey &&
+        !document.activeElement?.closest('input, select, textarea, [contenteditable]:not([contenteditable=false])')) {
       e.preventDefault()
       input.focus()
       input.select()

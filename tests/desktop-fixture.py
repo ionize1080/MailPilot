@@ -46,3 +46,7 @@ with contextlib.closing(connect(db_path(cfg))) as db, db:
         save(db, dict(store="qa",entry=str(i),folder="收件箱 / 采购",folder_id="purchase",stamp="1",subject=subject,
              sender=sender,received=f"2026-11-{18-i}T01:16:00Z",body=text,html=html,inlineImages={"signature":inline},
              metadata=meta,attachments=names))
+    for i in range(65):
+        save(db, dict(store="qa", entry=f"sidebar-{i}", folder="Sidebar", folder_id="sidebar", stamp="1",
+                      subject=f"Sidebar QA {i:02d}", sender="QA", received="2026-11-01T00:00:00Z",
+                      body="", attachments=[]))

@@ -1,0 +1,36 @@
+name: Windows desktop tests
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  desktop:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [classic, graph]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Stage the pinned runtime and desktop
+        shell: pwsh
+        run: |
+          python scripts/runtime.py
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Path dist/MailPilot/Chatbox -Force | Out-Null
+          python -c "import sys; sys.path.insert(0, 'scripts'); from package import stage_desktop; stage_desktop()"
+      - name: Compare indexed searches with full scans
+        if: matrix.source == 'classic'
+        run: ./dist/MailPilot/Runtime/python.exe -B tests/regression.py
+      - name: Exercise the desktop with a fixture mailbox
+        shell: pwsh
+        run: ./tests/desktop-ui.ps1 -Source ${{ matrix.source }}

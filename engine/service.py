@@ -229,7 +229,7 @@ class Session:
                         versions = ["2025-11-25","2025-06-18","2025-03-26","2024-11-05"]
                         version = p.get("protocolVersion")
                         result = {"protocolVersion":version if version in versions else versions[0],"capabilities":{"tools":{}},
-                                  "serverInfo":{"name":"MailPilot","version":"0.3.0"}}
+                                  "serverInfo":{"name":"MailPilot","version":"0.3.1"}}
                     elif method == "tools/list":
                         result = {"tools":TOOLS}
                         try:

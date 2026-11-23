@@ -8,7 +8,7 @@ New-Item -ItemType Directory -Path $qa | Out-Null
 $env:MAILPILOT_HOME=$qa
 $env:MAILPILOT_SOURCE=$Source
 $env:MAILPILOT_TEST_AI=if($Assistant){'1'}else{'0'}
-$config=@{autoRefresh=$false;theme='light';source=$Source}
+$config=@{autoRefresh=$false;theme='light';source=$Source;limit=20}
 if($Source -eq 'graph'){
   $config.clientId=[guid]::NewGuid().ToString()
   [IO.File]::WriteAllText((Join-Path $qa 'graph-account.json'),(@{account='test';clientId=$config.clientId}|ConvertTo-Json))
@@ -33,6 +33,8 @@ New-Item -ItemType Directory -Path $harness | Out-Null
 [IO.File]::WriteAllText((Join-Path $harness 'index.cjs'),"require('../../../tests/desktop-ui.cjs')")
 $p=Start-Process -FilePath (Join-Path $Bundle 'Browser\electron.exe') -ArgumentList ('"'+$harness+'"') -PassThru -WindowStyle Hidden
 if(!$p.WaitForExit(150000)){$p.Kill();throw "UI test timed out in $qa"}
-Get-Content -LiteralPath (Join-Path $qa 'result.txt')
+$result=Join-Path $qa 'result.txt'
+if(!(Test-Path -LiteralPath $result)){throw "Electron exited with code $($p.ExitCode) before producing a UI test result in $qa"}
+Get-Content -LiteralPath $result
 if($p.ExitCode){throw "UI test failed in $qa"}
 "Verified $qa"

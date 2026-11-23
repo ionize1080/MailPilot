@@ -6,7 +6,7 @@ using System.Reflection;
 using System.Windows.Forms;
 using Microsoft.Win32;
 
-[assembly: AssemblyFileVersion("0.3.0.0")]
+[assembly: AssemblyFileVersion("0.3.1.0")]
 namespace MailPilot {
     internal static class App {
         public static readonly string Root=Path.GetDirectoryName(typeof(App).Assembly.Location);

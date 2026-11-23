@@ -1395,10 +1395,9 @@ mark {
 body[data-layout='outlook'] .page-heading,
 body[data-layout='edge'] .page-heading { display: none; }
 body[data-layout='outlook'] .workarea,
-body[data-layout='edge'] .workarea { padding-top: 0; }
+body[data-layout='edge'] .workarea { padding-top: 0; scroll-padding-top: calc(var(--query-height, 0px) + 8px); }
 body[data-layout='outlook'] .query-card,
 body[data-layout='edge'] .query-card { position: sticky; top: 0; z-index: 2; margin-top: 10px; }
 body[data-layout='outlook'] .results-head,
 body[data-layout='edge'] .results-head { margin-top: 14px; }
 #results[aria-busy='true'] { opacity: .55; transition: opacity .12s; }
-.more-sentinel { height: 1px; }
